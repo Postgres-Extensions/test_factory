@@ -2,7 +2,7 @@
     "name": "test_factory",
     "abstract": "Framework for managing test data",
     "description": "Provides functions for registering commands to create test data and obtaining data during testing",
-    "version": "0.5.0",
+    "version": "1.0.0",
     "maintainer": "Jim Nasby <Jim.Nasby@BlueTreble.com>",
     "license": {"BSD 2 Clause": "http://opensource.org/licenses/bsd-license.php"},
 
@@ -12,31 +12,31 @@
             "abstract": "Framework for managing test data",
             "file": "sql/test_factory.sql",
             "docfile": "doc/test_factory.asc",
-            "version": "0.5.0"
+            "version": "1.0.0"
         },
         "test_factory_pgtap": {
             "abstract": "pgTap extension for test_factory",
             "file": "sql/test_factory_pgtap.sql",
             "docfile": "doc/test_factory.asc",
-            "version": "0.1.0"
+            "version": "1.0.0"
         }
     },
 
 
     "release_status": "stable",
 
-    "generated_by": "Jim Nasby <Jim.Nasby@BlueTreble.com>",
+    "generated_by": "Jim Nasby <Jim.Nasby@gmail.com>",
 
     "tags": [ "testing", "unit test", "tests", "test data", "test factory" ],
     
     "resources": {
-        "homepage": "http://github.com/BlueTreble/test_factory/",
+        "homepage": "http://github.com/Postgres-Extensions/test_factory/",
         "bugtracker": {
-            "web": "http://github.com/BlueTreble/test_factory/issues"
+            "web": "http://github.com/Postgres-Extensions/test_factory/issues"
         },
         "repository": {
-            "url": "git://github.com/BlueTreble/test_factory.git",
-            "web": "http://github.com/BlueTreble/test_factory/",
+            "url": "git://github.com/Postgres-Extensions/test_factory.git",
+            "web": "http://github.com/Postgres-Extensions/test_factory/",
             "type": "git"
         }
     },
