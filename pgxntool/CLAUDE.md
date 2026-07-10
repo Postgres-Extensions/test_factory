@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Scope of This File
+
+The guidance in this CLAUDE.md applies to pgxntool's own source files and provides
+recommended best practices for projects using pgxntool. However, any agent working in
+an extension project should always defer to that project's own CLAUDE.md and
+instructions over anything stated here.
+
 ## Git Commit Guidelines
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
@@ -181,9 +188,10 @@ When tests fail, examine the diff output carefully. The actual test output in `t
 - Validates repo is clean before tagging
 
 ### Subtree Sync Support
-- `make pgxntool-sync` pulls latest release
-- Multiple sync targets: release, stable, local variants
-- Uses `git subtree pull --squash`
+- `make pgxntool-sync` pulls the latest release (the `release` tag) from the canonical repo
+- `pgxntool/pgxntool-sync.sh [<repo> [<ref>]]` does the work and can be run without make
+- `make pgxntool-sync-<name>` pulls from the `pgxntool-sync-<name>` variable (`<repo> <ref>`)
+- Uses `git subtree pull --squash`, then `update-setup-files.sh` for a 3-way merge of copied files
 - Requires clean repo (no uncommitted changes)
 
 ### pg_tle Support
