@@ -11,6 +11,23 @@ EXCEPTION
 END
 $body$;
 
+/*
+ * As of PG16, CREATE ROLE no longer grants the creating role a SET-enabled
+ * membership in the new role, so SET ROLE test_factory__owner below fails
+ * unless the current role is a superuser (which bypasses the check). Grant it
+ * explicitly WITH SET so a non-superuser install works too. Runs
+ * unconditionally, even when the role already existed and CREATE ROLE was a
+ * no-op. Gated on PG16+, where the WITH SET syntax exists; pre-16 GRANT ... TO
+ * already confers the ability to SET ROLE.
+ */
+DO $body$
+BEGIN
+	IF current_setting('server_version_num')::int >= 160000 THEN
+		EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+	END IF;
+END
+$body$;
+
 CREATE SCHEMA tf AUTHORIZATION test_factory__owner;
 COMMENT ON SCHEMA tf IS $$Test factory. Tools for maintaining test data.$$;
 GRANT USAGE ON SCHEMA tf TO public;
