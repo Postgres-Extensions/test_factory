@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## GitHub CI
+
+After pushing to a branch with an open PR, monitor CI using `gh pr checks --watch` in a background subagent until all jobs pass or a failure is confirmed. Investigate and fix failures immediately rather than leaving them for the user to notice.
+
 ## Project Overview
 
 This is **test_factory**, a PostgreSQL extension that provides a framework for managing unit test data in databases. It solves the common problem of creating and maintaining test data by providing a system to register test data definitions once and retrieve them efficiently with automatic dependency resolution.
