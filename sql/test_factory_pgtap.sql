@@ -1,5 +1,7 @@
-CREATE TEMP TABLE original_role ON COMMIT DROP AS SELECT current_user AS original_role;
-GRANT SELECT ON pg_temp.original_role TO public;
+-- Save the caller's role so we can restore it at the end (we SET LOCAL ROLE
+-- below to own our objects). Stashed in a transaction-local GUC rather than a
+-- temp table, which would be owned by the extension and break CREATE EXTENSION.
+SELECT pg_catalog.set_config('test_factory_pgtap.original_role', current_user, true);
 
 SET LOCAL ROLE test_factory__owner;
 
@@ -25,16 +27,11 @@ BEGIN
 END
 $body$;
 
--- Set role back to original value
+-- Set role back to original value (saved at the top of this script).
 DO $body$
-DECLARE
-  c_sql CONSTANT text :=  'SET ROLE ' || (SELECT original_role FROM pg_temp.original_role);
 BEGIN
-  --RAISE WARNING 'c_sql = %', c_sql;
-  EXECUTE c_sql;
+  EXECUTE 'SET ROLE ' || pg_catalog.quote_ident(pg_catalog.current_setting('test_factory_pgtap.original_role'));
 END
 $body$;
-
-DROP TABLE pg_temp.original_role;
 
 -- vi: expandtab ts=2 sw=2
