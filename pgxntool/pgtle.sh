@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # pgtle.sh - Generate pg_tle registration SQL for PostgreSQL extensions
 #
@@ -330,7 +330,7 @@ run_pgtle_sql() {
         if [ -f "$sql_file" ]; then
             found=1
             echo "Running $sql_file..." >&2
-            psql --no-psqlrc --file="$sql_file" || exit 1
+            psql --no-psqlrc -v ON_ERROR_STOP=1 --file="$sql_file" || exit 1
         fi
     done
     
@@ -459,15 +459,25 @@ parse_control_file() {
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
 
+            # Trim trailing comments and whitespace FIRST, then strip quotes.
+            # Order matters: stripping quotes before removing comments leaves a rogue
+            # trailing quote for values like 'version' # note. See issue #25.
+            value="${value%%#*}"  # Remove trailing comments
+            # Trim all trailing whitespace (spaces and tabs). The prior %% pattern with
+            # a literal space only removed one character; multiple spaces or a tab before
+            # the comment (e.g., 'value'   # note or 'value'$'\t'# note) would leave
+            # stray whitespace that breaks the quote-strip below.
+            if [[ "$value" =~ ^(.*[^[:space:]])[[:space:]]*$ ]]; then
+                value="${BASH_REMATCH[1]}"
+            else
+                value=""
+            fi
+
             # Strip quotes if present (both single and double)
             value="${value#\'}"
             value="${value%\'}"
             value="${value#\"}"
             value="${value%\"}"
-
-            # Trim trailing whitespace/comments
-            value="${value%%#*}"  # Remove trailing comments
-            value="${value%% }"   # Trim trailing spaces
 
             # Store in global variables
             case "$key" in
@@ -518,14 +528,14 @@ discover_sql_files() {
     local default_version_file="sql/${EXTENSION}--${DEFAULT_VERSION}.sql"
     local base_file="sql/${EXTENSION}.sql"
     if [ -f "$base_file" ] && ([ ! -f "$default_version_file" ] || [ ! -s "$default_version_file" ]); then
-        debug 30 "discover_sql_files: Creating default_version file from base file"
+        debug 40 "discover_sql_files: Creating default_version file from base file"
         cp "$base_file" "$default_version_file"
     fi
 
     # Find versioned files: sql/{ext}--{version}.sql
     # Use find to get proper null-delimited output, then filter out upgrade scripts
     VERSION_FILES=()  # Reset array
-    debug 30 "discover_sql_files: Reset VERSION_FILES array"
+    debug 40 "discover_sql_files: Reset VERSION_FILES array"
     while IFS= read -r -d '' file; do
         local basename=$(basename "$file" .sql)
         local dash_count=$(echo "$basename" | grep -o -- "--" | wc -l | tr -d '[:space:]')
@@ -543,12 +553,9 @@ discover_sql_files() {
     # Find upgrade scripts: sql/{ext}--{ver1}--{ver2}.sql
     # These have TWO occurrences of "--" in the filename
     UPGRADE_FILES=()  # Reset array
-    debug 30 "discover_sql_files: Reset UPGRADE_FILES array"
+    debug 40 "discover_sql_files: Reset UPGRADE_FILES array"
     while IFS= read -r -d '' file; do
-        # Error on empty upgrade files
-        if [ ! -s "$file" ]; then
-            die 1 "Empty upgrade file found: $file"
-        fi
+        # Empty upgrade files are allowed (no-op upgrades)
         local basename=$(basename "$file" .sql)
         local dash_count=$(echo "$basename" | grep -o -- "--" | wc -l | tr -d '[:space:]')
         if [ "$dash_count" -eq 2 ]; then
@@ -567,8 +574,8 @@ discover_sql_files() {
         echo "    - $f" >&2
     done
 
-    debug 30 "discover_sql_files: Checking UPGRADE_FILES array, count=${#UPGRADE_FILES[@]:-0}"
-    if [ ${#UPGRADE_FILES[@]:-0} -gt 0 ]; then
+    debug 40 "discover_sql_files: Checking UPGRADE_FILES array, count=${#UPGRADE_FILES[@]}"
+    if array_not_empty "${#UPGRADE_FILES[@]}"; then
         echo "  Found ${#UPGRADE_FILES[@]} upgrade script(s):" >&2
         debug 30 "discover_sql_files: Iterating over ${#UPGRADE_FILES[@]} upgrade files"
         for f in "${UPGRADE_FILES[@]}"; do
@@ -615,6 +622,7 @@ wrap_sql_content() {
     validate_delimiter "$sql_file"
 
     # Output wrapped SQL with proper indentation
+    # Empty files are valid (no-op upgrades)
     echo "  ${PGTLE_DELIMITER}"
     cat "$sql_file"
     echo "  ${PGTLE_DELIMITER}"
@@ -635,8 +643,8 @@ build_requires_array() {
 generate_header() {
     local pgtle_version="$1"
     local output_file="$2"
-    local version_count=${#VERSION_FILES[@]:-0}
-    local upgrade_count=${#UPGRADE_FILES[@]:-0}
+    local version_count=${#VERSION_FILES[@]}
+    local upgrade_count=${#UPGRADE_FILES[@]}
 
     # Determine version compatibility message
     local compat_msg
@@ -661,17 +669,17 @@ generate_header() {
  *   - Upgrade paths: ${upgrade_count} path(s)
  *   - Default version: ${DEFAULT_VERSION}
  *
- * Installation instructions:
- *   1. Ensure pg_tle is installed:
- *      CREATE EXTENSION pg_tle;
+ * Installation:
+ *   Recommended: make run-pgtle
+ *   (or: pgxntool/pgtle.sh --run)
  *
- *   2. Ensure you have pgtle_admin role:
- *      GRANT pgtle_admin TO your_username;
+ *   This automatically detects your pg_tle version and runs the correct file.
  *
- *   3. Run this file:
- *      psql -f $(basename "$output_file")
+ *   Prerequisites:
+ *   - pg_tle extension installed (CREATE EXTENSION pg_tle;)
+ *   - pgtle_admin role (GRANT pgtle_admin TO your_username;)
  *
- *   4. Create the extension:
+ *   After registration, create the extension:
  *      CREATE EXTENSION ${EXTENSION};
  *
  * Version compatibility:
@@ -761,9 +769,9 @@ generate_pgtle_sql() {
     
     # Ensure arrays are initialized (defensive programming)
     # Arrays should already be initialized at top level, but ensure they exist
-    debug 30 "generate_pgtle_sql: Checking array initialization"
-    debug 30 "generate_pgtle_sql: VERSION_FILES is ${VERSION_FILES+set}, count=${#VERSION_FILES[@]:-0}"
-    debug 30 "generate_pgtle_sql: UPGRADE_FILES is ${UPGRADE_FILES+set}, count=${#UPGRADE_FILES[@]:-0}"
+    debug 40 "generate_pgtle_sql: Checking array initialization"
+    debug 30 "generate_pgtle_sql: VERSION_FILES is ${VERSION_FILES+set}, count=${#VERSION_FILES[@]}"
+    debug 30 "generate_pgtle_sql: UPGRADE_FILES is ${UPGRADE_FILES+set}, count=${#UPGRADE_FILES[@]}"
     
     if [ -z "${VERSION_FILES+set}" ]; then
         echo "WARNING: VERSION_FILES not set, initializing" >&2
@@ -799,8 +807,8 @@ DO \$\$
 BEGIN
     PERFORM pgtle.uninstall_extension('${EXTENSION}');
 EXCEPTION
-    WHEN undefined_object THEN
-        -- Extension might not exist yet
+    WHEN no_data_found THEN
+        -- Extension not registered yet (pg_tle raises P0002, not 42704)
         NULL;
 END
 \$\$;
@@ -809,7 +817,7 @@ EOF
         fi
 
         # Install base version (first version file)
-        if [ ${#VERSION_FILES[@]} -gt 0 ]; then
+        if array_not_empty "${#VERSION_FILES[@]}"; then
             generate_install_extension "${VERSION_FILES[0]}" "$capability"
         fi
 
@@ -821,14 +829,15 @@ EOF
         fi
 
         # Install all upgrade paths
-        local upgrade_count=${#UPGRADE_FILES[@]:-0}
-        debug 30 "generate_pgtle_sql: upgrade_count=$upgrade_count"
+        local upgrade_count=${#UPGRADE_FILES[@]}
+        debug 40 "generate_pgtle_sql: upgrade_count=$upgrade_count"
         if [ "$upgrade_count" -gt 0 ]; then
             debug 30 "generate_pgtle_sql: Processing $upgrade_count upgrade path(s)"
-            local i
-            for ((i=0; i<upgrade_count; i++)); do
-                debug 40 "generate_pgtle_sql: Processing upgrade file $i: ${UPGRADE_FILES[$i]}"
+            local i=0
+            while [ "$i" -lt "$upgrade_count" ]; do
+                debug 50 "generate_pgtle_sql: Processing upgrade file $i: ${UPGRADE_FILES[$i]}"
                 generate_install_update_path "${UPGRADE_FILES[$i]}"
+                i=$((i + 1))
             done
         else
             debug 30 "generate_pgtle_sql: No upgrade paths to process"
