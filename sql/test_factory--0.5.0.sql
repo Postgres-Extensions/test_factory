@@ -1,8 +1,9 @@
 /* DO NOT EDIT - AUTO-GENERATED FILE */
 /*
  * Save the caller's role so we can restore it at the end (we SET LOCAL ROLE
- * below to own our objects). Stashed in a transaction-local GUC rather than a
- * temp table, which would be owned by the extension and break CREATE EXTENSION.
+ * below to own our objects). A GUC is used instead of a temp table not to
+ * avoid CREATE EXTENSION breakage (trivial to avoid either way) but because
+ * it's much lighter weight than creating a table.
  */
 SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
 DO $body$
