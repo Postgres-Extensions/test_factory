@@ -1,6 +1,8 @@
--- Save the caller's role so we can restore it at the end (we SET LOCAL ROLE
--- below to own our objects). Stashed in a transaction-local GUC rather than a
--- temp table, which would be owned by the extension and break CREATE EXTENSION.
+/*
+ * Save the caller's role so we can restore it at the end (we SET LOCAL ROLE
+ * below to own our objects). Stashed in a transaction-local GUC rather than a
+ * temp table, which would be owned by the extension and break CREATE EXTENSION.
+ */
 SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
 DO $body$
 BEGIN
