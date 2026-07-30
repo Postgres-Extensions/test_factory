@@ -26,9 +26,11 @@
 
 SET client_min_messages = WARNING;
 
--- Read unconditionally, without missing_ok: the Makefile always exports
--- test_factory.test_load_mode, so an unset GUC here means the harness
--- itself is broken, not "assume fresh".
+/*
+ * Read unconditionally, without missing_ok: the Makefile always exports
+ * test_factory.test_load_mode, so an unset GUC here means the harness
+ * itself is broken, not "assume fresh".
+ */
 SELECT current_setting('test_factory.test_load_mode')   AS load_mode \gset
 SELECT current_setting('test_factory.test_update_from') AS update_from \gset
 SELECT current_setting('test_factory.test_update_to')   AS update_to \gset
@@ -41,26 +43,32 @@ BEGIN
   END IF;
 END $$;
 
--- test_role is test infrastructure, not part of what fresh/update/existing
--- describe -- (re)create it idempotently in every mode. A real pg_upgrade
--- target (existing mode) carries global objects like roles over, but don't
--- assume that; a from-scratch "existing" target might not have it.
+/*
+ * test_role is test infrastructure, not part of what fresh/update/existing
+ * describe -- (re)create it idempotently in every mode. A real pg_upgrade
+ * target (existing mode) carries global objects like roles over, but don't
+ * assume that; a from-scratch "existing" target might not have it.
+ */
 SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'test_role') AS need_role \gset
 \if :need_role
 CREATE ROLE :test_role;
 \endif
 
--- psql's \if only accepts a plain boolean token, not a comparison
--- expression -- compute it via SQL first (\if :load_mode = 'existing' would
--- silently misparse instead of erroring).
+/*
+ * psql's \if only accepts a plain boolean token, not a comparison
+ * expression -- compute it via SQL first (\if :load_mode = 'existing' would
+ * silently misparse instead of erroring).
+ */
 SELECT :'load_mode' = 'existing' AS is_existing \gset
 \if :is_existing
 
-  -- existing: never drop/create/update -- only assert the extensions are
-  -- actually there, at the version this build considers current. Never
-  -- hardcode the expected version (see doc's CI dynamic-version-assertion
-  -- guidance); default_version comes from the same control file `make`
-  -- itself builds from.
+  /*
+   * existing: never drop/create/update -- only assert the extensions are
+   * actually there, at the version this build considers current. Never
+   * hardcode the expected version (see doc's CI dynamic-version-assertion
+   * guidance); default_version comes from the same control file `make`
+   * itself builds from.
+   */
   DO $$
   DECLARE
     v_installed text := (SELECT extversion FROM pg_extension WHERE extname = 'test_factory');

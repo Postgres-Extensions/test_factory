@@ -1,11 +1,13 @@
 \echo Creating extension :extension_name
--- In 'update'/'existing' mode, test/install/load.sql already installed (and,
--- for 'update', updated) the extensions in its own earlier committed
--- session -- skip re-creating here instead of erroring or, worse, silently
--- replacing the state those modes exist to test. In 'fresh' mode (the only
--- mode test/install/load.sql leaves untouched), keep the original
--- behavior: no IF NOT EXISTS, so we're confused loudly if something's
--- already there instead of silently testing stale state.
+/*
+ * In 'update'/'existing' mode, test/install/load.sql already installed (and,
+ * for 'update', updated) the extensions in its own earlier committed
+ * session -- skip re-creating here instead of erroring or, worse, silently
+ * replacing the state those modes exist to test. In 'fresh' mode (the only
+ * mode test/install/load.sql leaves untouched), keep the original
+ * behavior: no IF NOT EXISTS, so we're confused loudly if something's
+ * already there instead of silently testing stale state.
+ */
 SELECT
   current_setting('test_factory.test_load_mode') <> 'fresh'
   AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = :'extension_name')
