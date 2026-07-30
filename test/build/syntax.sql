@@ -49,9 +49,21 @@
  * (and even between builds of the same version) -- it would make this
  * file's expected output impossible to match across the PG12/PG17 matrix
  * this repo tests against.
+ *
+ * Both files also print a row of query output for their
+ * `pg_catalog.set_config('..._role', current_user, true)` call (the
+ * original-role save at the top of each). current_user is whichever role
+ * actually connects, which is environment-dependent (this repo's own local
+ * testing connects as a different OS role than CI does) -- caught for real
+ * when this file's expected output, generated locally, didn't match CI.
+ * `\o /dev/null` discards normal query-result output for the rest of this
+ * file; NOTICE/WARNING/ERROR go to a separate stream psql doesn't route
+ * through `\o`, so every error this test actually cares about (including a
+ * genuine future syntax error) still shows up in the diff untouched.
  */
 \set ON_ERROR_STOP false
 \set VERBOSITY default
+\o /dev/null
 
 -- Guard against test/build/install.sql (or a previous run) having left
 -- either extension installed; keep this file runnable on its own regardless
