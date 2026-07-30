@@ -227,6 +227,17 @@ jobs:
         uses: actions/checkout@v4
       - name: Recreate old cluster with data checksums enabled
         run: .github/scripts/pg_upgrade_cluster recreate-old ${{ matrix.old_pg }}
+      - name: Install pgtap into the old cluster
+        # test_factory_pgtap requires pgtap (see prepare-old below). Unlike
+        # the fresh-install `test` job, which gets this for free because
+        # pg-start's default cluster already has it, this job recreates the
+        # cluster from scratch (previous step) with none of the fresh-install
+        # job's setup -- pgtap must be installed explicitly here too, for
+        # every PostgreSQL major this job touches, old and new alike.
+        # --pg_config is explicit (not relying on pg-start having already
+        # pointed the bare `pg_config` on PATH at this major) so this step's
+        # correctness doesn't depend on that PATH-switching behavior.
+        run: pgxn install pgtap --sudo --pg_config /usr/lib/postgresql/${{ matrix.old_pg }}/bin/pg_config
       - name: Install test_factory into old cluster
         run: make install
       - name: Prepare the old cluster (install current version + tap schema)
@@ -239,6 +250,15 @@ jobs:
         run: bin/test_existing prepare-old test_factory_upgrade
       - name: Install PostgreSQL ${{ matrix.new_pg }}
         run: apt-get install -y postgresql-${{ matrix.new_pg }} postgresql-server-dev-${{ matrix.new_pg }}
+      - name: Install pgtap into the new cluster
+        # pg_upgrade validates that every extension installed in a database
+        # being upgraded is also available (control file + library) on the
+        # NEW cluster's PostgreSQL install -- without this, the upgrade
+        # itself fails, not just the post-upgrade suite run. --pg_config is
+        # required here (unlike the previous pgtap install step): this step
+        # runs before pg-start ever points at the new major, so the plain
+        # `pg_config` on PATH would still resolve to the OLD version's.
+        run: pgxn install pgtap --sudo --pg_config /usr/lib/postgresql/${{ matrix.new_pg }}/bin/pg_config
       - name: Install test_factory into new cluster
         # PG_CONFIG must be specified explicitly: at this point both old and
         # new PostgreSQL are installed, and the default pg_config on PATH may
