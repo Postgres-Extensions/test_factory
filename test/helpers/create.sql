@@ -1,13 +1,15 @@
 SET ROLE = DEFAULT;
-CREATE ROLE test_role;
-GRANT USAGE ON SCHEMA tap TO test_role;
+-- test_role itself is created once, idempotently, by test/install/load.sql
+-- (test/roles.sql is the single source of truth for the name; \i'd via
+-- test/helpers/deps.sql).
+GRANT USAGE ON SCHEMA tap TO :test_role;
 /*
  * DO NOT GRANT test_role TO test_factory__owner; the whole point test_role is
  * to check for security problems.
  */
 
-CREATE SCHEMA test AUTHORIZATION test_role;
-SET ROLE = test_role;
+CREATE SCHEMA test AUTHORIZATION :test_role;
+SET ROLE = :test_role;
 SET search_path = test, tap;
 
 CREATE TABLE customer(
@@ -79,11 +81,19 @@ SELECT hasnt_table(
   , 'Ensure original_role temp table was dropped'
 );
 
+-- Only meaningful when this session actually ran CREATE EXTENSION itself
+-- (test_load_mode=fresh; the tables don't exist under update/existing,
+-- where test/install/load.sql installed/updated the extension earlier).
+SELECT to_regclass('pg_temp.pre_install_role') IS NOT NULL AS has_role_capture \gset
+\if :has_role_capture
 SELECT is(
   (SELECT * FROM post_install_role)
   , (SELECT * FROM pre_install_role)
   , 'Ensure role is put back after install'
 );
+\else
+SELECT skip('role-restore check only applies when this session ran CREATE EXTENSION itself (test_load_mode=fresh)', 1);
+\endif
 
 SELECT cmp_ok(
       proconfig
