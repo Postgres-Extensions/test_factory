@@ -1,11 +1,6 @@
 \set ECHO none
 NOTICE:  extension "test_factory_pgtap" does not exist, skipping
 NOTICE:  extension "test_factory" does not exist, skipping
- set_config 
-------------
- root
-(1 row)
-
 psql:sql/test_factory--0.5.0.sql:42: WARNING:  SET LOCAL can only be used in transaction blocks
 psql:sql/test_factory--0.5.0.sql:56: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
 psql:sql/test_factory--0.5.0.sql:57: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
@@ -17,11 +12,6 @@ LINE 1: SET ROLE ""
                  ^
 QUERY:  SET ROLE ""
 CONTEXT:  PL/pgSQL function inline_code_block line 3 at EXECUTE
- set_config 
-------------
- root
-(1 row)
-
 psql:sql/test_factory_pgtap--0.1.0.sql:10: WARNING:  SET LOCAL can only be used in transaction blocks
 psql:sql/test_factory_pgtap--0.1.0.sql:39: ERROR:  zero-length delimited identifier at or near """"
 LINE 1: SET ROLE ""
