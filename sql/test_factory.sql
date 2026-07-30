@@ -24,7 +24,7 @@ CREATE SCHEMA _test_factory_test_data AUTHORIZATION test_factory__owner;
 CREATE OR REPLACE FUNCTION _tf.schema__getsert(
 ) RETURNS name SECURITY DEFINER SET search_path = pg_catalog LANGUAGE plpgsql AS $body$
 BEGIN
-  /*
+  /* EXCLUDED CODE
   IF NOT EXISTS( SELECT 1 FROM pg_namespace WHERE nspname = '_test_data' ) THEN
     CREATE SCHEMA _test_data AUTHORIZATION test_factory__owner;
   END IF;

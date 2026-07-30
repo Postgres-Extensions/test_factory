@@ -1,6 +1,24 @@
 name: CI
 on: [push, pull_request]
 jobs:
+  # Style linter (https://github.com/Postgres-Extensions/linter, vendored at
+  # .vendor/linter). Deliberately checked out WITHOUT submodules -- `make
+  # lint` is the same command a developer runs locally, and lint.mk
+  # self-initializes the submodule on first use (see its comment). Using the
+  # exact same entry point here is what actually proves that self-init works,
+  # rather than papering over it with a submodules: true checkout. The
+  # linter's own test suite (fixtures + scanner edge cases) is that repo's
+  # own CI's job, not this one's. No PostgreSQL needed -- sql-lint is a
+  # standalone Perl script -- so this doesn't use the pgxn-tools container.
+  lint:
+    name: 🧹 SQL Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Lint SQL
+        run: make lint
+
   test:
     strategy:
       matrix:

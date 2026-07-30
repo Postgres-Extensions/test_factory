@@ -1,3 +1,4 @@
+-- sql-lint:disable-block all: vendored verbatim from pgTAP (https://pgtap.org), do not reformat
 
 -- This file defines pgTAP Schema, a portable collection of schema-testing
 -- functions for TAP-based unit testing on PostgreSQL 8.3 or higher. It is

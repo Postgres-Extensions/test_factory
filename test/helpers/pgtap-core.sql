@@ -1,3 +1,4 @@
+-- sql-lint:disable-block all: vendored verbatim from pgTAP (https://pgtap.org), do not reformat
 
 -- This file defines pgTAP Core, a portable collection of assertion
 -- functions for TAP-based unit testing on PostgreSQL 8.3 or higher. It is
