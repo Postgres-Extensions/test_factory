@@ -26,9 +26,60 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 ### Test Helpers
 - `test/helpers/setup.sql` - Test environment initialization and pgTAP setup
 - `test/helpers/create.sql` - Test data registration and security validation
-- `test/helpers/create_extension.sql` - Extension creation wrapper
-- `test/helpers/deps.sql` - Test dependency management
+- `test/helpers/create_extension.sql` - Extension creation wrapper; skips
+  `CREATE EXTENSION` when `test/install/load.sql` already installed it
+  (`test_load_mode` is not `fresh`)
+- `test/helpers/deps.sql` - Test dependency management (`\i`'s `test/roles.sql`)
+- `test/roles.sql` - Single source of truth for test-only role names
 - Other helper files for role management and pgTAP integration
+
+## Load Modes (`TEST_LOAD_SOURCE`)
+
+`test/install/load.sql` runs once, committed, before the regular test files
+(pgxntool's `PGXNTOOL_ENABLE_TEST_INSTALL` feature), so its state survives
+into every test file. `TEST_LOAD_SOURCE` (default `fresh`) picks how the
+extension gets to its target state:
+
+- **fresh** (default) - `load.sql` does nothing extra; `test/sql/*.sql`
+  install the extension themselves, exactly as before this feature existed.
+- **update** - `load.sql` does `CREATE EXTENSION test_factory VERSION
+  :from` then `ALTER EXTENSION UPDATE` (`TEST_UPDATE_FROM`/`TEST_UPDATE_TO`
+  make vars). test_factory has only ever shipped one version (0.5.0), so
+  this is a no-op today -- the mechanism exists for when a second version
+  ships, but no CI job drives it yet. `make test-update` is a shorthand for
+  `make test TEST_LOAD_SOURCE=update`.
+- **existing** - the extension is already installed (a real `pg_upgrade`
+  target, or an out-of-band update) -- `load.sql` only asserts it's present
+  at the current version, plants a dependency guard (see below), and
+  proves it. `test/sql/install.sql` and the install/dependency-order part of
+  `test/sql/pgtap.sql` are skipped in this mode (see the `\if :is_existing`
+  branches in those files) since they'd otherwise defeat the guard by doing
+  their own from-scratch drop/recreate.
+
+  Run against a real pre-existing install with:
+  ```
+  make test TEST_LOAD_SOURCE=existing CONTRIB_TESTDB=<db> \
+    EXTRA_REGRESS_OPTS=--use-existing PGXNTOOL_ENABLE_TEST_BUILD=no
+  ```
+
+  `existing` mode legitimately produces different (but equally valid)
+  output than `fresh`/`update` for `base`/`install`/`pgtap` (skipped
+  sections, a skipped role-restore check), so it has alternate expected
+  files: `test/expected/{base,install,pgtap}_1.out` (pg_regress's numbered
+  alternate-expected-file convention).
+
+### Dependency Guard
+
+Planted only in `existing` mode (see `load.sql`): a view in schema
+`test_factory_drop_guard` depending on `tf.tap(text,text)` blocks a
+non-CASCADE `DROP EXTENSION test_factory_pgtap`. `test_factory` itself
+doesn't need an artificial guard -- `test_factory_pgtap`'s own control file
+(`requires = 'pgtap, test_factory'`) already blocks a non-CASCADE
+`DROP EXTENSION test_factory` as long as `test_factory_pgtap` is installed;
+`load.sql` proves that natural protection too. The point of the guard: in
+`existing` mode, nothing else stops a stray drop (or a logic bug that falls
+through to the fresh/update branch) from silently destroying the real
+upgraded/updated objects this mode exists to test.
 
 ## Test Coverage Analysis
 
