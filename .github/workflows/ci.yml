@@ -42,4 +42,12 @@ jobs:
       # regression actually fails CI, instead of only being caught by a
       # developer who happens to run `make test` locally.
       - name: Verify test/build (SQL syntax + install mechanics)
-        run: make test-build
+        # pgxntool/run-test-build.sh (vendored, not this repo's own script)
+        # shells out to rsync to sync test/build/*.sql into test/build/sql/ --
+        # the pgxn/pgxn-tools image doesn't ship rsync, so install it first.
+        # Any pgxntool project enabling PGXNTOOL_ENABLE_TEST_BUILD on this
+        # image would hit the same gap; worth a pgxntool-test issue, not
+        # something to work around inside the vendored script itself.
+        run: |
+          apt-get install -y rsync
+          make test-build
