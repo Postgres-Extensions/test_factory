@@ -3,7 +3,7 @@ ok 1 - drop extension test_factory_pgtap
 ok 2 - drop extension test_factory
 ok 3 - Extension test_factory should not exist
 ok 4 - Extension test_factory_pgtap should not exist
-ok 5 - create extension
+ok 5 - create extension as a non-superuser role (issue #14)
 ok 6 - Function tf.tap(text, text) should exist
 ok 7 - clean-up test_factory_pgtap
 ok 8 - clean-up test_factory
