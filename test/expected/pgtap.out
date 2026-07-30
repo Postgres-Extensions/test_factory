@@ -1,17 +1,16 @@
 \set ECHO none
-ok 1 - Ensure test_factory is a dependency of test_factory_pgtap
 Creating extension test_factory
 Creating extension test_factory_pgtap
-ok 2 - Register test customers
-ok 3 - Create function customer__add
-ok 4 - Register test invoices
-ok 5 - Ensure original_role temp table was dropped
-ok 6 - Ensure role is put back after install
-ok 7 - Security definer function _tf.schema__getsert has search_path=pg_catalog
-ok 8 - Security definer function _tf.test_factory__get has search_path=pg_catalog
-ok 9 - Security definer function _tf.test_factory__set has search_path=pg_catalog
-ok 10 - Security definer function _tf.table_create has search_path=pg_catalog
-ok 11 - Security definer function _tf.get has search_path=pg_catalog
+ok 1 - Register test customers
+ok 2 - Create function customer__add
+ok 3 - Register test invoices
+ok 4 - Ensure original_role temp table was dropped
+ok 5 - Ensure role is put back after install
+ok 6 - Security definer function _tf.schema__getsert has search_path=pg_catalog
+ok 7 - Security definer function _tf.test_factory__get has search_path=pg_catalog
+ok 8 - Security definer function _tf.test_factory__set has search_path=pg_catalog
+ok 9 - Security definer function _tf.table_create has search_path=pg_catalog
+ok 10 - Security definer function _tf.get has search_path=pg_catalog
+ok 11 - Get test data set "base" for table invoice
 ok 12 - Get test data set "base" for table invoice
-ok 13 - Get test data set "base" for table invoice
-ok 14 - Ensure we get sane error for a non-existent table
+ok 13 - Ensure we get sane error for a non-existent table

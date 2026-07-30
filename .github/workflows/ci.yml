@@ -33,3 +33,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Test on PostgreSQL ${{ matrix.pg }}
         run: pg-build-test
+      # pg-build-test (from pgxn-tools) runs `make all; sudo make install;
+      # make installcheck` -- it never invokes the `test` target, so
+      # pgxntool's test-build feature (wired only into `test`'s dependency
+      # chain, not `installcheck`) would otherwise never run in CI even
+      # though `PGXNTOOL_ENABLE_TEST_BUILD = yes` is set in the Makefile.
+      # Run it explicitly here so a SQL syntax error or a packaging/install
+      # regression actually fails CI, instead of only being caught by a
+      # developer who happens to run `make test` locally.
+      - name: Verify test/build (SQL syntax + install mechanics)
+        run: make test-build

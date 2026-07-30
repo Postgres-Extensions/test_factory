@@ -1,5 +1,10 @@
 include pgxntool/base.mk
 
+# Explicit rather than relying on base.mk's auto-detection of test/build/*.sql
+# files, so an accidental deletion of test/build/'s contents is a loud error
+# instead of silently disabling this check.
+PGXNTOOL_ENABLE_TEST_BUILD = yes
+
 # Hook for test to ensure dependencies in control file are set correctly
 testdeps: check_control
 
