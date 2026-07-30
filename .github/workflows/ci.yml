@@ -1,5 +1,39 @@
+# Test strategy
+#
+# A test_factory install can be arrived at two ways, each of which can break
+# differently, so each gets its own job below:
+#
+#   test             -- FRESH install: CREATE EXTENSION at the current
+#                        version, on every supported PostgreSQL major. The
+#                        baseline a brand-new user gets.
+#   pg-upgrade-test   -- BINARY pg_upgrade: install the current version on an
+#                        OLD major, binary-upgrade the cluster to a NEWER
+#                        major, then run the suite against the migrated
+#                        objects in "existing" mode (test/install/load.sql).
+#                        Proves objects created on an old server still work
+#                        read back on a new one -- fresh-install testing
+#                        never exercises this at all.
+#
+# test_factory has shipped only one version (0.5.0), so there is no
+# in-place `ALTER EXTENSION UPDATE` path to test yet (no extension-update-test
+# job) and the pg_upgrade job needs no bridge step (it always installs the
+# CURRENT version on the old cluster -- there's no older, pg_upgrade-unsafe
+# version in the wild to carry forward). Both jobs derive their PostgreSQL
+# major list from the single source of truth computed in the `changes` job
+# below, so adding/dropping a supported major is a one-line edit there.
 name: CI
-on: [push, pull_request]
+on:
+  # Post-merge CI only; pull_request already covers every PR commit. Without
+  # this, a commit on a branch with an open PR fires the workflow TWICE for
+  # the identical SHA (once for push, once for pull_request/synchronize) --
+  # double the compute, and a flake on one duplicate run shows a confusing
+  # red check right next to an identical green one for the same commit.
+  push:
+    branches:
+      - master
+  pull_request:
+env:
+  PGUSER: postgres
 jobs:
   # Style linter (https://github.com/Postgres-Extensions/linter, vendored at
   # .vendor/linter). Deliberately checked out WITHOUT submodules -- `make
@@ -19,10 +53,101 @@ jobs:
       - name: Lint SQL
         run: make lint
 
+  # Cheap gate that lets the heavy jobs below skip themselves on commits that
+  # touch only docs, without a workflow-level `paths-ignore` (which would skip
+  # the *whole* workflow, including all-checks-passed, on a docs-only push --
+  # leaving a required check stuck Pending forever). Also derives, from a
+  # single set of constants, the supported-PostgreSQL-major list every heavy
+  # job below consumes, so adding a major is a one-line edit here instead of
+  # N separate matrix edits.
+  changes:
+    name: 🔍 Detect changes & derive PG matrix
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+      supported_pg: ${{ steps.pg.outputs.supported_pg }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          # Full history needed so BASE and HEAD below are both reachable
+          # for `git diff`.
+          fetch-depth: 0
+      - name: Compute per-push changed files
+        id: diff
+        run: |
+          # Fail-safe is the literal first line: any early exit or error
+          # further down (a bad BASE/HEAD, a failed git diff) leaves this in
+          # place, so a broken check never silently skips real testing.
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ github.event.action }}" = "synchronize" ] && \
+             [ -n "${{ github.event.before }}" ]; then
+            # A push to an already-open PR: before/after give the true
+            # per-push diff, same as for a branch push.
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.event.after }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # First run for this PR (opened/reopened/etc, or synchronize
+            # without a usable before): fall back to the whole base...head
+            # diff.
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.event.after }}"
+          fi
+
+          echo "base=$BASE"
+          echo "head=$HEAD"
+
+          # A missing HEAD, or an all-zeros BASE (e.g. a new branch's first
+          # push, where GitHub reports no prior commit), means we can't
+          # compute a real diff -- the fail-safe default above stands.
+          if [ -z "$HEAD" ] || [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]]; then
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" || echo __DIFF_FAILED__)
+          echo "changed files:"
+          echo "$CHANGED"
+
+          if [ "$CHANGED" = "__DIFF_FAILED__" ] || [ -z "$CHANGED" ]; then
+            exit 0
+          fi
+
+          DOCS_ONLY=true
+          while IFS= read -r f; do
+            if ! [[ "$f" =~ \.(md|asc)$ ]]; then
+              DOCS_ONLY=false
+              break
+            fi
+          done <<< "$CHANGED"
+
+          echo "docs_only=$DOCS_ONLY" >> "$GITHUB_OUTPUT"
+      - name: Derive the supported-PostgreSQL-major list
+        id: pg
+        run: |
+          # Single source of truth for the supported PostgreSQL majors: the
+          # `test` and `pg-upgrade-test` matrices below both derive their
+          # version lists from here, so they cannot silently drift onto
+          # different lists. To add or drop a major, edit only NEWEST/FLOOR.
+          NEWEST=17
+          FLOOR=10
+          supported=$(seq "$NEWEST" -1 "$FLOOR")
+          # Emit a JSON array from a list of ints, for matrix: to consume
+          # with fromJSON.
+          json() { printf '%s\n' "$@" | paste -sd, - | sed 's/^/[/; s/$/]/'; }
+          echo "supported_pg=$(json $supported)" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     strategy:
       matrix:
-        pg: [17, 16, 15, 14, 13, 12, 11, 10]
+        # Current-supported majors, from the single source in the changes job.
+        pg: ${{ fromJSON(needs.changes.outputs.supported_pg) }}
     name: 🐘 PostgreSQL ${{ matrix.pg }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
@@ -59,3 +184,113 @@ jobs:
       # invocation.
       - name: Test on PostgreSQL ${{ matrix.pg }}
         run: make verify-results
+
+  # Proves test_factory survives a BINARY pg_upgrade (in-place catalog
+  # migration to a newer PostgreSQL major), not just a fresh CREATE EXTENSION.
+  # Each leg: install the CURRENT version on an old cluster, binary-pg_upgrade
+  # to a newer major, then run the suite against the REAL migrated objects in
+  # "existing" mode (test/install/load.sql asserts the version, plants, and
+  # proves the dependency guard -- see bin/test_existing and
+  # test/install/load.sql). No bridge step: unlike an extension with multiple
+  # shipped versions, test_factory has only ever shipped 0.5.0, so there is no
+  # older, pg_upgrade-unsafe install to carry forward -- every leg installs
+  # the current version directly on the old cluster.
+  #
+  # Two legs, not an every-major stepwise climb (deliberately out of scope --
+  # see the PR description): the oldest-to-newest jump (widest catalog
+  # distance) and the newest-boundary jump (most likely to hit a *new*
+  # PostgreSQL major's catalog change first). test_factory has no views or
+  # functions touching catalog internals (no SELECT * over a system catalog),
+  # so the per-major-boundary risk a full stepwise climb protects against is
+  # low here.
+  pg-upgrade-test:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        include:
+          - old_pg: "10"
+            new_pg: "17"
+          - old_pg: "16"
+            new_pg: "17"
+    name: 🔄 Binary pg_upgrade ${{ matrix.old_pg }} → ${{ matrix.new_pg }}
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    env:
+      # Both clusters must use the same initdb options so pg_upgrade sees
+      # consistent settings (checksums, auth) on old and new clusters.
+      INITDB_OPTS: --data-checksums --auth trust
+    steps:
+      - name: Start PostgreSQL ${{ matrix.old_pg }}
+        run: pg-start ${{ matrix.old_pg }}
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Recreate old cluster with data checksums enabled
+        run: .github/scripts/pg_upgrade_cluster recreate-old ${{ matrix.old_pg }}
+      - name: Install test_factory into old cluster
+        run: make install
+      - name: Prepare the old cluster (install current version + tap schema)
+        # test_factory_pgtap needs pgtap installed into a dedicated "tap"
+        # schema BEFORE it installs (see bin/test_existing's prepare-old
+        # comment) -- a bare CREATE EXTENSION test_factory_pgtap CASCADE with
+        # no schema prep leaves pgtap wherever the ambient search_path
+        # resolves, and the suite's SET search_path = tap then can't find
+        # pgtap's functions.
+        run: bin/test_existing prepare-old test_factory_upgrade
+      - name: Install PostgreSQL ${{ matrix.new_pg }}
+        run: apt-get install -y postgresql-${{ matrix.new_pg }} postgresql-server-dev-${{ matrix.new_pg }}
+      - name: Install test_factory into new cluster
+        # PG_CONFIG must be specified explicitly: at this point both old and
+        # new PostgreSQL are installed, and the default pg_config on PATH may
+        # not be the new version's.
+        run: make install PG_CONFIG=/usr/lib/postgresql/${{ matrix.new_pg }}/bin/pg_config
+      - name: Stop old cluster, binary pg_upgrade to PostgreSQL ${{ matrix.new_pg }}, start new cluster
+        run: .github/scripts/pg_upgrade_cluster upgrade ${{ matrix.old_pg }} ${{ matrix.new_pg }}
+      - name: Run the suite against the pg_upgraded database (existing mode)
+        # run-suite dynamically asserts the installed version (never
+        # hardcoded), then runs the suite via --use-existing (so pg_regress
+        # does not drop/recreate the database) and gates on verify-results --
+        # test/install/load.sql's existing-mode branch plants and proves the
+        # dependency guard as part of this same invocation.
+        run: bin/test_existing run-suite test_factory_upgrade
+
+  # A single stable check name for use as a required status check in branch
+  # protection rules (not configured by this PR -- that needs a repo admin).
+  # Matrix jobs produce check names like "🐘 PostgreSQL 14", which would all
+  # need to be listed individually and updated whenever the matrix changes.
+  # This job passes if every other job passed or was skipped (e.g. the heavy
+  # jobs gated off by the `changes` job on a docs-only push), and fails if any
+  # failed or were cancelled.
+  all-checks-passed:
+    needs: [changes, test, pg-upgrade-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Verify all jobs are listed in needs
+        # Ensures this job won't silently ignore a newly-added job that was
+        # omitted from the needs list above.
+        run: |
+          DEFINED=$(python3 -c "
+          import yaml
+          with open('.github/workflows/ci.yml') as f:
+              w = yaml.safe_load(f)
+          print('\n'.join(sorted(j for j in w['jobs'] if j != 'all-checks-passed')))
+          ")
+          NEEDED=$(echo '${{ toJson(needs) }}' | python3 -c "
+          import json, sys
+          print('\n'.join(sorted(json.load(sys.stdin))))
+          ")
+          if [ "$DEFINED" != "$NEEDED" ]; then
+            echo "Some jobs are missing from all-checks-passed needs:"
+            diff <(echo "$DEFINED") <(echo "$NEEDED")
+            exit 1
+          fi
+      - name: Check all jobs passed or were skipped
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more jobs failed or were cancelled"
+            exit 1
+          fi
+# vi: expandtab ts=2 sw=2

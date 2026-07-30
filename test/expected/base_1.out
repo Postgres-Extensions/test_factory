@@ -6,11 +6,11 @@ ok 2 - Create function customer__add
 ok 3 - Register test invoices
 ok 4 - Ensure original_role temp table was dropped
 ok 5 # SKIP role-restore check only applies when this session ran CREATE EXTENSION itself (test_load_mode=fresh)
-ok 6 - Security definer function _tf.schema__getsert has search_path=pg_catalog
-ok 7 - Security definer function _tf.test_factory__get has search_path=pg_catalog
-ok 8 - Security definer function _tf.test_factory__set has search_path=pg_catalog
-ok 9 - Security definer function _tf.table_create has search_path=pg_catalog
-ok 10 - Security definer function _tf.get has search_path=pg_catalog
+ok 6 - Security definer function _tf.get has search_path=pg_catalog
+ok 7 - Security definer function _tf.schema__getsert has search_path=pg_catalog
+ok 8 - Security definer function _tf.table_create has search_path=pg_catalog
+ok 9 - Security definer function _tf.test_factory__get has search_path=pg_catalog
+ok 10 - Security definer function _tf.test_factory__set has search_path=pg_catalog
 ok 11 - customer table is empty
 ok 12 - invoice table is empty
 ok 13 - invoice factory output
