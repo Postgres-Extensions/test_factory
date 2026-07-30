@@ -90,13 +90,15 @@ SELECT hasnt_table(
  * anymore now that this file no longer runs it itself.
  */
 
--- ORDER BY is load-bearing, not cosmetic: with no ordering this scans
--- pg_proc in physical order, which happens to match creation order on a
--- fresh CREATE EXTENSION but is NOT preserved by pg_upgrade (its
--- dump/restore reconstructs pg_proc in a different, e.g. name-sorted,
--- order) -- discovered because the pg_upgrade CI leg's "existing" run
--- produced a row-reordered (but otherwise identical) diff against this
--- same query's fresh-install expected output.
+/*
+ * ORDER BY is load-bearing, not cosmetic: with no ordering this scans
+ * pg_proc in physical order, which happens to match creation order on a
+ * fresh CREATE EXTENSION but is NOT preserved by pg_upgrade (its
+ * dump/restore reconstructs pg_proc in a different, e.g. name-sorted,
+ * order) -- discovered because the pg_upgrade CI leg's "existing" run
+ * produced a row-reordered (but otherwise identical) diff against this
+ * same query's fresh-install expected output.
+ */
 SELECT cmp_ok(
       proconfig
       , '@>'
