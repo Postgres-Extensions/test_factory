@@ -10,8 +10,14 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 
 ### Test Files
 - `test/sql/base.sql` - Core functionality tests (22 tests)
-- `test/sql/install.sql` - Extension installation/uninstallation tests  
 - `test/sql/pgtap.sql` - pgTAP integration and `tf.tap()` function tests
+- `test/build/install.sql` - Extension packaging/install-mechanics checks
+  (dependency declarations, clean install/uninstall). Runs via pgxntool's
+  `test/build` feature (plain SQL + pg_regress diffing, no pgTAP) in an
+  isolated database, separate from the main pgTAP-based suite above.
+- `test/build/syntax.sql` - Runs the raw, generated versioned SQL install
+  scripts (`sql/*--*.sql`) directly via `\i`, to catch SQL syntax errors with
+  a clearer error than a `CREATE EXTENSION` failure would give.
 
 ### Expected Results
 - `test/expected/*.out` - Expected test output for regression testing
@@ -41,15 +47,24 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 - **Permission Isolation** - Tests with unprivileged `test_role`
 - **Temp Table Cleanup** - Verifies temporary installation objects are removed
 
-### Installation Tests (`install.sql`) 
+### Installation/Packaging Tests (`test/build/install.sql`)
 - **Dependency Validation** - Tests extension dependency requirements
 - **Clean Installation** - Tests CREATE EXTENSION without conflicts
 - **Clean Removal** - Tests DROP EXTENSION without orphaned objects
+- Runs via pgxntool's `test/build` feature (plain SQL/pg_regress diffing,
+  not pgTAP), in an isolated database separate from the main suite below.
+
+### Raw SQL Syntax Tests (`test/build/syntax.sql`)
+- Runs `sql/test_factory--*.sql` and `sql/test_factory_pgtap--*.sql` directly
+  via `\i` (not `CREATE EXTENSION`), so a genuine syntax error is reported
+  clearly instead of being obscured by a generic CREATE EXTENSION failure.
+- See the comments in that file for the known/expected errors baked into its
+  expected output (`pg_extension_config_dump()` and `SET ROLE ""`), which are
+  artifacts of running the file outside of CREATE EXTENSION, not bugs.
 
 ### pgTAP Integration Tests (`pgtap.sql`)
 - **tf.tap() Function** - Tests pgTAP wrapper functionality
 - **Error Handling** - Tests proper error reporting for invalid inputs
-- **Extension Dependencies** - Validates test_factory_pgtap requires test_factory
 
 ## Test Data Model
 

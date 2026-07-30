@@ -1,0 +1,8 @@
+\set ECHO none
+ERROR:  required extension "test_factory" is not installed
+HINT:  Use CREATE EXTENSION ... CASCADE to install required extensions too.
+   regprocedure    
+-------------------
+ tf.tap(text,text)
+(1 row)
+
