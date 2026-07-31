@@ -31,23 +31,24 @@ jobs:
         run: pg-start ${{ matrix.pg }}
       - name: Check out the repo
         uses: actions/checkout@v4
+      # Not pgxn-tools' own `pg-build-test` helper: it never invokes `make
+      # test` (it runs `make all; sudo make install; make installcheck`
+      # directly -- confirmed from its actual source, pgxn/docker-pgxn-tools
+      # bin/pg-build-test), so it would never reach test-build (wired in only
+      # via `test`'s own dependency chain). Worse, its failure detection
+      # (`make installcheck || status=$?`) can never actually trip: pgxntool
+      # marks `installcheck` `.IGNORE`, so `make installcheck` always exits 0
+      # regardless of real regression failures (verified locally with a
+      # deliberately broken test). `make verify-results` inspects the actual
+      # TAP output instead of trusting an exit code, and pulls in test-build
+      # as part of the same `test` dependency chain it already runs.
+      #
+      # rsync first: pgxntool/run-test-build.sh (vendored, not this repo's
+      # own script) needs it to sync test/build/*.sql into test/build/sql/,
+      # and the pgxn/pgxn-tools image doesn't ship it. Any pgxntool project
+      # enabling PGXNTOOL_ENABLE_TEST_BUILD on this image would hit the same
+      # gap -- worth a pgxntool-test issue, not a vendored-script edit here.
+      - name: Install rsync
+        run: apt-get install -y rsync
       - name: Test on PostgreSQL ${{ matrix.pg }}
-        run: pg-build-test
-      # pg-build-test (from pgxn-tools) runs `make all; sudo make install;
-      # make installcheck` -- it never invokes the `test` target, so
-      # pgxntool's test-build feature (wired only into `test`'s dependency
-      # chain, not `installcheck`) would otherwise never run in CI even
-      # though `PGXNTOOL_ENABLE_TEST_BUILD = yes` is set in the Makefile.
-      # Run it explicitly here so a SQL syntax error or a packaging/install
-      # regression actually fails CI, instead of only being caught by a
-      # developer who happens to run `make test` locally.
-      - name: Verify test/build (SQL syntax + install mechanics)
-        # pgxntool/run-test-build.sh (vendored, not this repo's own script)
-        # shells out to rsync to sync test/build/*.sql into test/build/sql/ --
-        # the pgxn/pgxn-tools image doesn't ship rsync, so install it first.
-        # Any pgxntool project enabling PGXNTOOL_ENABLE_TEST_BUILD on this
-        # image would hit the same gap; worth a pgxntool-test issue, not
-        # something to work around inside the vendored script itself.
-        run: |
-          apt-get install -y rsync
-          make test-build
+        run: make verify-results

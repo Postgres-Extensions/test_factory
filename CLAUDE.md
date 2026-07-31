@@ -10,6 +10,8 @@ After pushing to a branch with an open PR, monitor CI using `gh pr checks --watc
 
 This is **test_factory**, a PostgreSQL extension that provides a framework for managing unit test data in databases. It solves the common problem of creating and maintaining test data by providing a system to register test data definitions once and retrieve them efficiently with automatic dependency resolution.
 
+This PGXN distribution ships **two extensions**: `test_factory` (the core framework) and `test_factory_pgtap` (a thin pgTAP integration wrapper, `tf.tap()`, depending on `test_factory`). Because they're structurally so similar (same install/security-definer/role-restoration patterns, same packaging concerns), the test suite shares a lot of common infrastructure between them (`test/helpers/*`, `test/build/*`) rather than duplicating it per extension -- keep that in mind when adding tests for one and wondering whether the other needs the same treatment.
+
 ## Build System & Development Commands
 
 This project uses PGXNtool for build management. Key commands:
