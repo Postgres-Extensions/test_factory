@@ -2,6 +2,34 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CI Monitoring After Every Push
+
+**REQUIRED**: After every `git push`, immediately start a background task to
+monitor the CI run for that push. If you pushed to both pgxntool and
+pgxntool-test, start a background task for each repo — do not monitor them
+sequentially.
+
+The CI monitor lives in the pgxntool-test checkout: run
+`bash ../pgxntool-test/.claude/skills/ci/scripts/monitor-ci.sh` (the `/ci`
+skill). It monitors both repos and derives the owner from the current repo.
+Pass the exact push SHA when available — `gh run list --branch` has a race
+condition: if two pushes land close together on the same branch, `--branch`
+may pick up the wrong run. `--commit SHA` targets the exact push and avoids it.
+
+## Scope of This File
+
+**CLAUDE.md is for people USING pgxntool** — extension developers who have embedded
+pgxntool into their project via `git subtree`. It documents the build system, available
+commands, and how pgxntool works.
+
+**If you are making changes to pgxntool itself**, stop — you are in the wrong place.
+See `.claude/` in this directory for developer guidelines. More importantly, pgxntool
+development must be done from the **pgxntool-test** repository, not from here. See the
+`Development Workflow` section below.
+
+Any agent working in an extension project should always defer to that project's own
+CLAUDE.md and instructions over anything stated here.
+
 ## Git Commit Guidelines
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
@@ -73,7 +101,7 @@ include pgxntool/base.mk
   - `PGXNVERSION` - version number
   - `EXTENSIONS` - list of extensions provided
   - `EXTENSION_*_VERSION` - per-extension versions
-  - `EXTENSION_VERSION_FILES` - auto-generated versioned SQL files
+  - `EXTENSION__CURRENT_VERSION__FILES` - the current/most-recent auto-generated versioned SQL file for each extension (not all version files)
 - `base.mk` includes `meta.mk` via `-include`
 
 ### The Magic of base.mk
@@ -116,11 +144,11 @@ make                    # Build extension (generates versioned SQL, docs)
 make test              # Full test: testdeps → install → installcheck → show diffs
 make results           # Run tests and update expected output files
 make html              # Generate HTML from Asciidoc sources
-make tag               # Create git branch for current META.json version
+make tag               # Create git tag for current META.json version
 make dist              # Create PGXN .zip (auto-tags, places in ../)
 make pgtle             # Generate pg_tle registration SQL (see pg_tle Support below)
 make check-pgtle       # Check pg_tle installation and report version
-make install-pgtle    # Install pg_tle registration SQL files into database
+make run-pgtle         # Register extensions with pg_tle in the database
 make pgxntool-sync     # Update to latest pgxntool via git subtree pull
 ```
 
@@ -176,14 +204,15 @@ When tests fail, examine the diff output carefully. The actual test output in `t
 
 ### Distribution Packaging
 - `make dist` creates `../PGXN-VERSION.zip`
-- Always creates git branch tag matching version
+- Always creates git tag matching version
 - Uses `git archive` to package
 - Validates repo is clean before tagging
 
 ### Subtree Sync Support
-- `make pgxntool-sync` pulls latest release
-- Multiple sync targets: release, stable, local variants
-- Uses `git subtree pull --squash`
+- `make pgxntool-sync` pulls the latest release (the `release` tag) from the canonical repo
+- `pgxntool/pgxntool-sync.sh [<repo> [<ref>]]` does the work and can be run without make
+- `make pgxntool-sync-<name>` pulls from the `pgxntool-sync-<name>` variable (`<repo> <ref>`)
+- Uses `git subtree pull --squash`, then `update-setup-files.sh` for a 3-way merge of copied files
 - Requires clean repo (no uncommitted changes)
 
 ### pg_tle Support
@@ -198,16 +227,16 @@ pgxntool can generate pg_tle (Trusted Language Extensions) registration SQL for 
 
 **Installation targets:**
 
-- `make check-pgtle` - Checks if pg_tle is installed and reports the version. Reports version from `pg_extension` if extension has been created, or newest available version from `pg_available_extension_versions` if available but not created. Errors if pg_tle not available in cluster. Assumes `PG*` environment variables are configured.
+- `make check-pgtle` - Checks if pg_tle is installed and reports the version. Reports the version from `pg_extension` if `CREATE EXTENSION pg_tle` has been run in the database. Errors if pg_tle is not available in the cluster. Assumes `PG*` environment variables are configured.
 
-- `make install-pgtle` - Auto-detects pg_tle version and installs appropriate registration SQL files. Updates or creates pg_tle extension as needed. Determines which version range files to install based on detected version. Runs all generated SQL files via `psql` to register extensions with pg_tle. Assumes `PG*` environment variables are configured.
+- `make run-pgtle` - Registers all extensions with pg_tle by executing the generated pg_tle registration SQL files. Requires pg_tle to already be installed in the target database (`CREATE EXTENSION pg_tle;`) -- it does not create the extension itself, and errors out telling you to run `make check-pgtle` if it's missing. Depends on `pgtle`, so it generates the SQL files first if needed. Assumes `PG*` environment variables are configured.
 
 **Version notation:**
 - `X.Y.Z+` means >= X.Y.Z
 - `X.Y.Z-A.B.C` means >= X.Y.Z and < A.B.C (note boundary)
 
 **Key implementation details:**
-- Script: `pgxntool/pgtle-wrap.sh` (bash)
+- Script: `pgxntool/pgtle.sh` (bash)
 - Parses `.control` files for metadata (NOT META.json)
 - Fixed delimiter: `$_pgtle_wrap_delimiter_$` (validated not in source)
 - Each output file contains ALL versions and ALL upgrade paths
@@ -240,6 +269,7 @@ Generated files depend on:
 4. **Control File Versions**: No automatic validation that `.control` matches `META.json` version
 5. **PGXNTOOL_NO_PGXS_INCLUDE**: Setting this skips PGXS inclusion (for special scenarios)
 6. **Distribution Placement**: `.zip` files go in parent directory (`../`) to avoid repo clutter
+7. **Never hand-edit an old versioned SQL file**: `sql/{ext}--{version}.sql` is only auto-regenerated by `make` for the extension's *current* `default_version` (from its `.control` file — not `META.json`; see "PGXN Distributions vs. Extensions" in README.asc). Every other `sql/{ext}--{version}.sql` (any version that is no longer current) is a frozen historical record used to test update paths and PostgreSQL-version compatibility — editing one directly silently corrupts that record. If you need to change something after a version has shipped, bump the version and add a `sql/{ext}--{old}--{new}.sql` upgrade script instead; never edit `sql/{ext}--{old}.sql` in place. This applies even though the file carries a generic `DO NOT EDIT - AUTO-GENERATED FILE` header — that header doesn't distinguish "regenerated every build" (current version) from "generated once, now frozen" (every other version). See "Version-Specific SQL Files" in README.asc for the full reasoning, including when it's acceptable to not commit a given version's file at all, and why that should be a plain `rm` rather than a `.gitignore` entry.
 
 ## Scripts
 

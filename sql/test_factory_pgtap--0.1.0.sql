@@ -1,3 +1,4 @@
+/* DO NOT EDIT - AUTO-GENERATED FILE */
 /*
  * Save the caller's role so we can restore it at the end (we SET LOCAL ROLE
  * below to own our objects). A GUC is used instead of a temp table not to
