@@ -50,23 +50,12 @@ jobs:
       # gap -- worth a pgxntool-test issue, not a vendored-script edit here.
       - name: Install rsync
         run: apt-get install -y rsync
-      # `make install` first, as its own separate invocation, is required on
-      # a genuinely fresh system (confirmed by deleting test_factory's
-      # installed files and re-running from scratch): pgxntool's own
-      # TEST_DEPS order is testdeps, check-stale-expected, test-build,
-      # install, installcheck -- and check-stale-expected has a direct
-      # `check-stale-expected: installcheck` dependency of its own, so Make
-      # satisfies "installcheck" (running the main suite against a
-      # not-yet-installed extension) to resolve THAT edge long before it
-      # ever reaches the literal "install installcheck" pair listed later in
-      # TEST_DEPS. test-build survives this by luck, not design symmetry: it
-      # separately declares `test-build: install`, which happens to install
-      # the extension in time for test-build's OWN nested installcheck, but
-      # does nothing for the main suite's installcheck resolved earlier via
-      # check-stale-expected. This is a real pgxntool base.mk ordering gap
-      # worth its own upstream issue -- not something to fix by editing the
-      # vendored copy here.
+      # No separate `make install` step needed here: pgxntool 2.3.0 makes
+      # `installcheck: install` a real Make dependency edge (fixing the
+      # ordering gap previously worked around above -- see
+      # Postgres-Extensions/pgxntool-test#62 for the root cause), so
+      # `verify-results`'s own dependency chain now installs the extension
+      # before running the suite, every time, without a second explicit
+      # invocation.
       - name: Test on PostgreSQL ${{ matrix.pg }}
-        run: |
-          make install
-          make verify-results
+        run: make verify-results
