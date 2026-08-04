@@ -292,7 +292,7 @@ jobs:
   # jobs gated off by the `changes` job on a docs-only push), and fails if any
   # failed or were cancelled.
   all-checks-passed:
-    needs: [changes, test, pg-upgrade-test]
+    needs: [changes, lint, test, pg-upgrade-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
