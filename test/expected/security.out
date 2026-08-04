@@ -1,0 +1,6 @@
+\set ECHO none
+Creating extension test_factory
+ok 1 - Bare, unprivileged role can register test data with zero extra grants
+ok 2 - Bare, unprivileged role can create+fetch test data with zero extra grants
+ok 3 - Bare, unprivileged role gets the cached row on a second call
+ok 4 - Bare role cannot SET ROLE into the extension owner role
