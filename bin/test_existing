@@ -37,13 +37,14 @@
 # dependency guard (a view in schema test_factory_drop_guard depending on
 # tf.tap(text,text)) is planted AND proved entirely inside
 # test/install/load.sql's existing-mode branch, which run-suite's `make
-# test` invocation triggers as its own first regression step. This script
-# doesn't need to plant or re-prove it separately -- it exists to protect
-# the SUITE RUN itself (a stray non-CASCADE drop from a bug elsewhere in the
-# suite) rather than to prove the guard survived pg_upgrade, since binary
-# pg_upgrade either carries every user object over intact or fails outright;
-# there's no partial-survival case here for a pre-upgrade guard to detect
-# that a post-upgrade one wouldn't already catch.
+# verify-results` invocation triggers as its own first regression step. This
+# script doesn't need to plant or re-prove it separately -- it exists to
+# protect the SUITE RUN itself (a stray non-CASCADE drop from a bug
+# elsewhere in the suite) rather than to prove the guard survived
+# pg_upgrade, since binary pg_upgrade either carries every user object over
+# intact or fails outright; there's no partial-survival case here for a
+# pre-upgrade guard to detect that a post-upgrade one wouldn't already
+# catch.
 set -euo pipefail
 
 # Run from the repository root regardless of the caller's cwd, same
@@ -87,7 +88,11 @@ run_suite() {
   local db=$1
   assert_version "$db"
   local existing_args="TEST_LOAD_SOURCE=existing CONTRIB_TESTDB=$db EXTRA_REGRESS_OPTS=--use-existing PGXNTOOL_ENABLE_TEST_BUILD=no"
-  make test $existing_args
+  # verify-results already depends on `test` (pgxntool's base.mk), so a
+  # separate `make test` call first would just re-run the entire regression
+  # suite a second time against the real migrated database for nothing --
+  # every pg-upgrade-test CI leg was paying for two full
+  # `pg_regress --use-existing` runs instead of one.
   make verify-results $existing_args
 }
 
