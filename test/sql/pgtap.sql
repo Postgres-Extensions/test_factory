@@ -35,8 +35,20 @@ SELECT throws_ok(
 
 \set extension_name test_factory
 \i test/helpers/create_extension.sql
+/*
+ * update mode: load.sql already installed test_factory (never
+ * test_factory_pgtap -- see test/install/load.sql), so the \i above just
+ * skipped without creating pre_install_role/post_install_role (see
+ * test/helpers/create_extension.sql's already_installed check) -- an
+ * unconditional DROP TABLE here would error "does not exist". Guard the
+ * same way test/helpers/create.sql already does for its own role-restore
+ * check.
+ */
+SELECT to_regclass('pg_temp.pre_install_role') IS NOT NULL AS has_role_capture \gset
+\if :has_role_capture
 DROP TABLE pre_install_role;
 DROP TABLE post_install_role;
+\endif
 \set extension_name test_factory_pgtap
 \i test/helpers/create_extension.sql
 
