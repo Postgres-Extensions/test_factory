@@ -53,10 +53,13 @@ extension gets to its target state:
 - **existing** - the extension is already installed (a real `pg_upgrade`
   target, or an out-of-band update) -- `load.sql` only asserts it's present
   at the current version, plants a dependency guard (see below), and
-  proves it. `test/sql/install.sql` and the install/dependency-order part of
-  `test/sql/pgtap.sql` are skipped in this mode (see the `\if :is_existing`
-  branches in those files) since they'd otherwise defeat the guard by doing
-  their own from-scratch drop/recreate.
+  proves it. The install/dependency-order part of `test/sql/pgtap.sql` is
+  skipped in this mode (see the `\if :is_existing` branch in that file)
+  since it'd otherwise defeat the guard by doing its own from-scratch
+  drop/recreate. (Packaging/dependency-declaration checks used to live in
+  `test/sql/install.sql`; that file is gone -- see `test/build/install.sql`
+  below, which runs once via pg_regress's classic diffing rather than
+  per-`TEST_LOAD_SOURCE`-mode.)
 
   Run against a real pre-existing install with:
   ```
@@ -65,9 +68,9 @@ extension gets to its target state:
   ```
 
   `existing` mode legitimately produces different (but equally valid)
-  output than `fresh`/`update` for `base`/`install`/`pgtap` (skipped
-  sections, a skipped role-restore check), so it has alternate expected
-  files: `test/expected/{base,install,pgtap}_1.out` (pg_regress's numbered
+  output than `fresh`/`update` for `base`/`pgtap` (skipped sections, a
+  skipped role-restore check), so it has alternate expected files:
+  `test/expected/{base,pgtap}_1.out` (pg_regress's numbered
   alternate-expected-file convention).
 
 ### Dependency Guard
