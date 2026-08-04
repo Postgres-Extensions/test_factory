@@ -140,7 +140,7 @@ jobs:
           # `test` and `pg-upgrade-test` matrices below both derive their
           # version lists from here, so they cannot silently drift onto
           # different lists. To add or drop a major, edit only NEWEST/FLOOR.
-          NEWEST=17
+          NEWEST=18
           FLOOR=10
           supported=$(seq "$NEWEST" -1 "$FLOOR")
           # Emit a JSON array from a list of ints, for matrix: to consume
@@ -220,9 +220,9 @@ jobs:
       matrix:
         include:
           - old_pg: "10"
-            new_pg: "17"
-          - old_pg: "16"
-            new_pg: "17"
+            new_pg: "18"
+          - old_pg: "17"
+            new_pg: "18"
     name: 🔄 Binary pg_upgrade ${{ matrix.old_pg }} → ${{ matrix.new_pg }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
