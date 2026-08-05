@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 After pushing to a branch with an open PR, monitor CI using `gh pr checks --watch` in a background subagent until all jobs pass or a failure is confirmed. Investigate and fix failures immediately rather than leaving them for the user to notice.
 
+### PR title convention for CI-only PRs
+
+A PR whose diff is confined entirely to CI configuration should have a title starting with `CI: ` (capital, colon, space). "CI-only" means literally that -- every changed file lives under `.github/workflows/`, nothing else. A PR that's CI-*motivated* but also adds/changes a real file elsewhere (a new `bin/` script a workflow calls, a linter's Makefile wiring, a test fixture) is NOT CI-only under this reading, even though CI is the reason it exists -- don't stretch the prefix to cover those. Check with `gh pr view <n> --json files --jq '.files[].path'` before applying it, don't guess from the title/description alone.
+
 ## psql Script Conventions
 
 Any `\if`/`\elsif`/`\else`/`\endif` block spanning more than ~a dozen lines needs a short comment naming the block on each of its control statements (including `\endif`), so a reader scrolling past `\else`/`\endif` on their own can tell at a glance which `\if` they belong to without scrolling back up. Put the comment on its own line immediately above the control statement, NOT trailing on the same line -- unlike SQL statements, psql's `\if`/`\else`/`\endif` don't treat a trailing `--` as a comment to strip: `\if` parses the entire rest of the line as its boolean expression (so a trailing comment breaks parsing outright), and `\else`/`\endif` parse it as an "extra argument" that gets ignored but still prints a warning into the actual output. Example:
