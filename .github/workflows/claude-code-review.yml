@@ -41,6 +41,13 @@ jobs:
       contents: read
       pull-requests: write   # post the review comments
       checks: read           # read sibling check-runs for the cost gate
+      # No narrower scope exists for cache-write alone; without this,
+      # claude-code-action's own internal setup silently fails to save its
+      # Actions cache ("Cache reservation failed: cache write denied: token
+      # has no writable scopes") -- a warning, not a hard failure, so the job
+      # still completes and looks fine, just slower/uncached every run. Don't
+      # try to "tighten" this down to something narrower; it doesn't exist.
+      actions: write
     steps:
       # COST GATE: the paid Claude review is the last thing to run. Wait for the
       # PR head's OTHER check-runs to finish and only proceed if they are clean.
@@ -118,6 +125,16 @@ jobs:
           # marketplace repo's default branch (upstream anthropics/claude-code).
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
+          # A bare prompt: (no @claude mention) runs claude-code-action in
+          # "agent mode", which decides which MCP servers to start by
+          # scanning --allowedTools inside claude_args -- it does NOT consult
+          # the invoked plugin's own allowed-tools frontmatter. Without this,
+          # mcp__github_inline_comment__create_inline_comment never starts
+          # (not "exists but blocked" -- genuinely absent), so the
+          # code-review plugin silently falls back to one consolidated PR
+          # comment instead of real per-line inline comments. No error, no
+          # warning -- every review just quietly uses the wrong output shape.
+          claude_args: '--allowedTools mcp__github_inline_comment__create_inline_comment'
           # --comment is required: without it, the code-review plugin only
           # prints its findings to the job log and never posts anything to
           # the PR (confirmed by capturing the hidden SDK transcript on a
