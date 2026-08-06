@@ -31,23 +31,28 @@ jobs:
         run: pg-start ${{ matrix.pg }}
       - name: Check out the repo
         uses: actions/checkout@v4
-      # Not pgxn-tools' own `pg-build-test` helper: it never invokes `make
-      # test` (it runs `make all; sudo make install; make installcheck`
-      # directly -- confirmed from its actual source, pgxn/docker-pgxn-tools
-      # bin/pg-build-test), so it would never reach test-build (wired in only
-      # via `test`'s own dependency chain). Worse, its failure detection
-      # (`make installcheck || status=$?`) can never actually trip: pgxntool
-      # marks `installcheck` `.IGNORE`, so `make installcheck` always exits 0
+      # Not `pg-build-test`, the helper script baked into this job's own
+      # CONTAINER IMAGE (pgxn/pgxn-tools, github.com/pgxn/docker-pgxn-tools --
+      # a completely different project from pgxntool, the Make-based build
+      # system this repo vendors at pgxntool/ and invokes below): confirmed
+      # from pg-build-test's actual source that it never invokes `make test`
+      # (it runs `make all; sudo make install; make installcheck` directly),
+      # so it would never reach test-build (wired in only via pgxntool's own
+      # `test` dependency chain). Worse, its failure detection (`make
+      # installcheck || status=$?`) can never actually trip: pgxntool marks
+      # `installcheck` `.IGNORE`, so `make installcheck` always exits 0
       # regardless of real regression failures (verified locally with a
-      # deliberately broken test). `make verify-results` inspects the actual
-      # TAP output instead of trusting an exit code, and pulls in test-build
-      # as part of the same `test` dependency chain it already runs.
+      # deliberately broken test). `make verify-results` (pgxntool's own
+      # target) inspects the actual TAP output instead of trusting an exit
+      # code, and pulls in test-build as part of the same `test` dependency
+      # chain it already runs.
       #
-      # rsync first: pgxntool/run-test-build.sh (vendored, not this repo's
-      # own script) needs it to sync test/build/*.sql into test/build/sql/,
-      # and the pgxn/pgxn-tools image doesn't ship it. Any pgxntool project
-      # enabling PGXNTOOL_ENABLE_TEST_BUILD on this image would hit the same
-      # gap -- worth a pgxntool-test issue, not a vendored-script edit here.
+      # rsync first: pgxntool/run-test-build.sh (vendored from pgxntool, not
+      # this repo's own script) needs it to sync test/build/*.sql into
+      # test/build/sql/, and the pgxn-tools CONTAINER IMAGE doesn't ship it.
+      # Any pgxntool project enabling PGXNTOOL_ENABLE_TEST_BUILD on this same
+      # image would hit the same gap -- worth a pgxntool-test issue, not a
+      # vendored-script edit here.
       - name: Install rsync
         run: apt-get install -y rsync
       # No separate `make install` step needed here: pgxntool 2.3.0 makes

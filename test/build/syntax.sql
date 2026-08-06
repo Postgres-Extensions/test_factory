@@ -25,11 +25,21 @@
 \set VERBOSITY default
 \o /dev/null
 
+/*
+ * Resolve the CURRENT versioned filenames rather than hardcoding a version
+ * number here -- pg_available_extensions reads the .control files `make
+ * install` (test-build's own dependency) just put in place, so this always
+ * matches whatever's actually being built, with nothing to remember to bump
+ * by hand alongside a real version bump.
+ */
+SELECT default_version FROM pg_available_extensions WHERE name = 'test_factory' \gset tf_
+SELECT default_version FROM pg_available_extensions WHERE name = 'test_factory_pgtap' \gset tfp_
+
 BEGIN;
 
 -- test_factory first: test_factory_pgtap's file needs its "tf" schema/role.
-\i sql/test_factory--0.5.0.sql
-\i sql/test_factory_pgtap--0.1.0.sql
+\i sql/test_factory--:tf_default_version.sql
+\i sql/test_factory_pgtap--:tfp_default_version.sql
 
 ROLLBACK;
 
