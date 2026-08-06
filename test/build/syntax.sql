@@ -2,12 +2,19 @@
 \i test/helpers/psql.sql
 
 /*
- * Runs the versioned SQL files under sql/ directly via \i (not CREATE
- * EXTENSION), so a genuine syntax error is reported clearly instead of
- * hiding behind a generic CREATE EXTENSION failure. Compare
- * test/build/install.sql: that one tests packaging (dependency
- * declarations, clean install/uninstall) via a real CREATE EXTENSION; this
- * one tests raw SQL syntax by deliberately bypassing it.
+ * Runs the actual source files under sql/ (test_factory.sql,
+ * test_factory_pgtap.sql -- the ones a developer edits) directly via \i
+ * (not CREATE EXTENSION), so a genuine syntax error is reported clearly
+ * instead of hiding behind a generic CREATE EXTENSION failure. Deliberately
+ * NOT the pgxntool-generated, version-suffixed copies of these same files
+ * (verified byte-identical except for one auto-generated "DO NOT EDIT"
+ * header line) that exist purely for PGXN packaging -- running those here
+ * would just add a version-number-resolution step for zero benefit, since
+ * it's the same content either way. (This comment deliberately never
+ * spells out that generated filename pattern with a literal wildcard glob
+ * right after a slash -- slash-star opens a comment, and Postgres nests
+ * block comments, so an unbalanced extra opener here would silently swallow
+ * the rest of this file. Hit this for real writing this comment.)
  *
  * Wrapped in one transaction, rolled back at the end, so nothing persists
  * whether this runs under pg_regress or ad hoc locally. ON_ERROR_ROLLBACK
@@ -25,21 +32,11 @@
 \set VERBOSITY default
 \o /dev/null
 
-/*
- * Resolve the CURRENT versioned filenames rather than hardcoding a version
- * number here -- pg_available_extensions reads the .control files `make
- * install` (test-build's own dependency) just put in place, so this always
- * matches whatever's actually being built, with nothing to remember to bump
- * by hand alongside a real version bump.
- */
-SELECT default_version FROM pg_available_extensions WHERE name = 'test_factory' \gset tf_
-SELECT default_version FROM pg_available_extensions WHERE name = 'test_factory_pgtap' \gset tfp_
-
 BEGIN;
 
 -- test_factory first: test_factory_pgtap's file needs its "tf" schema/role.
-\i sql/test_factory--:tf_default_version.sql
-\i sql/test_factory_pgtap--:tfp_default_version.sql
+\i sql/test_factory.sql
+\i sql/test_factory_pgtap.sql
 
 ROLLBACK;
 
