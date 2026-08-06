@@ -11,13 +11,14 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 ### Test Files
 - `test/sql/base.sql` - Core functionality tests (22 tests)
 - `test/sql/pgtap.sql` - pgTAP integration and `tf.tap()` function tests
-- `test/build/install.sql` - Extension packaging/install-mechanics checks
-  (dependency declarations, clean install/uninstall). Runs via pgxntool's
-  `test/build` feature (plain SQL + pg_regress diffing, no pgTAP) in an
-  isolated database, separate from the main pgTAP-based suite above.
 - `test/build/syntax.sql` - Runs the raw, generated versioned SQL install
   scripts (`sql/*--*.sql`) directly via `\i`, to catch SQL syntax errors with
-  a clearer error than a `CREATE EXTENSION` failure would give.
+  a clearer error than a `CREATE EXTENSION` failure would give. This is the
+  *only* file `test/build` is for: running extension scripts "bare" for
+  better error context. Its results are always thrown away (unlike
+  `test/install`, which is intended to commit and persist) -- packaging
+  checks (dependency declarations, clean install/uninstall) belong in
+  `test/install/load.sql` instead, not here.
 
 ### Expected Results
 - `test/expected/*.out` - Expected test output for regression testing
@@ -46,13 +47,6 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 - **Security Definer Functions** - Ensures all privileged functions use `search_path=pg_catalog`
 - **Permission Isolation** - Tests with unprivileged `test_role`
 - **Temp Table Cleanup** - Verifies temporary installation objects are removed
-
-### Installation/Packaging Tests (`test/build/install.sql`)
-- **Dependency Validation** - Tests extension dependency requirements
-- **Clean Installation** - Tests CREATE EXTENSION without conflicts
-- **Clean Removal** - Tests DROP EXTENSION without orphaned objects
-- Runs via pgxntool's `test/build` feature (plain SQL/pg_regress diffing,
-  not pgTAP), in an isolated database separate from the main suite below.
 
 ### Raw SQL Syntax Tests (`test/build/syntax.sql`)
 - Runs `sql/test_factory--*.sql` and `sql/test_factory_pgtap--*.sql` directly
