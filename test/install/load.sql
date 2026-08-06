@@ -4,20 +4,21 @@
  * PGXNTOOL_ENABLE_TEST_INSTALL feature runs this file, committed, in its
  * own pg_regress session before the regular test SQL files run -- so
  * whatever it commits here survives into every test file, instead of each
- * one creating its own install from scratch (which is still what the
- * regular test files do in the default 'fresh' mode, unchanged). NOTE: this
- * comment deliberately never spells out a bare wildcard glob right after a
- * slash -- slash-star is a comment opener, and Postgres nests block
- * comments, so an unbalanced extra opener earlier in a comment silently
- * swallows the rest of the file instead of erroring where you'd notice (hit
- * this for real while writing this file -- see the PR description).
+ * one creating its own install from scratch. This is the ONLY place that
+ * knows how the extension gets onto the system, in every mode -- the
+ * regular test files (test/sql/base.sql, test/sql/pgtap.sql) always assume
+ * both extensions are already installed. NOTE: this comment deliberately
+ * never spells out a bare wildcard glob right after a slash -- slash-star
+ * is a comment opener, and Postgres nests block comments, so an unbalanced
+ * extra opener earlier in a comment silently swallows the rest of the file
+ * instead of erroring where you'd notice (hit this for real while writing
+ * this file -- see the PR description).
  *
  * TEST_LOAD_SOURCE (make var -> test_factory.test_load_mode GUC, see
  * Makefile) picks how the extension gets to its target state:
- *   fresh    (default) - do nothing here; the regular test files still
- *                        install it themselves, exactly as before this
- *                        feature existed.
- *   update   - CREATE EXTENSION VERSION :from, then ALTER EXTENSION UPDATE.
+ *   fresh    (default) - CREATE EXTENSION test_factory_pgtap CASCADE.
+ *   update   - CREATE EXTENSION VERSION :from, then ALTER EXTENSION UPDATE,
+ *              then install test_factory_pgtap too.
  *   existing - extension is already installed (a real pg_upgrade target, or
  *              an out-of-band update) -- assert-only, never drop/create.
  */
@@ -110,10 +111,16 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
    * change that weakens that dependency doesn't go unnoticed. Nothing
    * depends on test_factory_pgtap itself, so it gets an explicit guard.
    *
-   * Only planted in existing mode, not fresh/update: test/sql/install.sql's
-   * own non-CASCADE DROP EXTENSION is a deliberate, self-contained test of
-   * drop/recreate -- that test is skipped under existing mode (see
-   * install.sql) precisely because it's incompatible with this guard.
+   * Only planted in existing mode, not fresh/update: the guard's whole
+   * point is protecting the real upgraded/updated objects this mode exists
+   * to test, and fresh/update modes have nothing irreplaceable to protect
+   * (a re-run recreates everything from scratch there anyway). Note the
+   * guard only blocks a non-CASCADE drop -- it can't stop a logic bug that
+   * misroutes into the fresh/update branch below, since that branch's own
+   * drop-first reset uses CASCADE. Real protection against that specific
+   * failure mode is the is_existing check itself being correct, not this
+   * guard; this guard's job is narrower (an accidental *non-cascade* drop
+   * elsewhere while existing mode's state is live).
    */
   CREATE SCHEMA IF NOT EXISTS test_factory_drop_guard;
   CREATE OR REPLACE VIEW test_factory_drop_guard.guard AS
@@ -167,6 +174,29 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
   DROP EXTENSION IF EXISTS test_factory_pgtap CASCADE;
   DROP EXTENSION IF EXISTS test_factory CASCADE;
 
+  /*
+   * pgtap must land in a dedicated "tap" schema BEFORE test_factory_pgtap
+   * installs, not after. test_factory_pgtap.control declares pgtap as a
+   * requirement too, so the CREATE EXTENSION ... CASCADE (or plain CREATE
+   * EXTENSION, in update mode) below would otherwise cascade-install pgtap
+   * itself into whatever schema this session's ambient search_path
+   * resolves to (public, by default) -- and since that satisfies "pgtap is
+   * already installed", the main suite's own tap_setup.sql (which does
+   * CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap) then skips creating it
+   * in "tap" at all, leaving every pgTAP-based test file failing with
+   * "function no_plan() does not exist" (hit this for real writing this
+   * file). IF NOT EXISTS on both statements: harmless no-op on a rerun
+   * where a previous pass already did this and the drop-first reset above
+   * didn't touch it (cascading test_factory_pgtap's drop doesn't remove
+   * pgtap -- pgtap is its dependency, not the other way around).
+   */
+  CREATE SCHEMA IF NOT EXISTS tap;
+  CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
+
+  -- Captured before either branch below runs CREATE EXTENSION, so the
+  -- role-restore proof after \endif covers whichever one actually ran.
+  SELECT current_user AS role_before_install \gset
+
   SELECT :'load_mode' = 'update' AS is_update \gset
   \if :is_update
 
@@ -178,21 +208,45 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
     ALTER EXTENSION test_factory UPDATE;
     \endif
     SET client_min_messages = WARNING;
+    -- test_factory_pgtap has only ever shipped one version, so there's no
+    -- update path of its own to exercise -- just install it at current so
+    -- the rest of the suite can assume it's present, same as fresh mode.
+    CREATE EXTENSION test_factory_pgtap;
+
+  \else
+
+    /*
+     * fresh: install for real, right here, uniformly with update/existing --
+     * so test/sql/base.sql and test/sql/pgtap.sql can assume both
+     * extensions are already present in every mode, instead of each mode
+     * needing its own install-or-skip dance (what test/helpers/
+     * create_extension.sql used to do; deleted along with this change).
+     * CASCADE proves test_factory_pgtap.control's "requires = 'pgtap,
+     * test_factory'" line actually pulls test_factory in --
+     * test/sql/pgtap.sql separately proves the dependency is *enforced*
+     * (via pg_depend), not just that cascade happens to work.
+     */
+    CREATE EXTENSION test_factory_pgtap CASCADE;
 
   \endif
+
   /*
-   * fresh: nothing else to do here -- the regular test files install the
-   * extension themselves, same as before this feature existed (see
-   * test/helpers/create_extension.sql).
-   *
-   * test_factory has only ever shipped one version (0.5.0), so 'update'
-   * mode above has no real historical update script to exercise yet --
-   * CREATE EXTENSION VERSION '0.5.0' + ALTER EXTENSION UPDATE is a no-op
-   * today. The mechanism is built now per the advanced-extension-testing
-   * checklist (items 3-5); no CI job drives TEST_LOAD_SOURCE=update yet,
-   * since doing so wouldn't prove anything fresh-mode CI doesn't already
-   * cover. See the PR description for this reasoning.
+   * Prove CREATE EXTENSION restored the calling role (whichever branch
+   * above actually ran it) -- a real security property, not a formality:
+   * test_factory.sql's install script does its own work as
+   * test_factory__owner via SET LOCAL ROLE, saving/restoring the original
+   * role around it. Compared from OUTSIDE (current_user before vs after),
+   * not by inspecting the internal GUC test_factory.sql saves it to --
+   * that GUC is transaction-scoped (set_config(..., true)) and would
+   * already be gone by the time a later statement in this autocommit
+   * session could read it.
    */
+  SELECT current_user AS role_after_install \gset
+  SELECT :'role_before_install' = :'role_after_install' AS role_was_restored \gset
+  \if :role_was_restored
+  \else
+  DO $$ BEGIN RAISE EXCEPTION 'CREATE EXTENSION did not restore the calling role'; END $$;
+  \endif
 
 \endif
 

@@ -83,21 +83,10 @@ SELECT hasnt_table(
   , 'Ensure original_role temp table was dropped'
 );
 
-/*
- * Only meaningful when this session actually ran CREATE EXTENSION itself
- * (test_load_mode=fresh; the tables don't exist under update/existing,
- * where test/install/load.sql installed/updated the extension earlier).
- */
-SELECT to_regclass('pg_temp.pre_install_role') IS NOT NULL AS has_role_capture \gset
-\if :has_role_capture
-SELECT is(
-  (SELECT * FROM post_install_role)
-  , (SELECT * FROM pre_install_role)
-  , 'Ensure role is put back after install'
-);
-\else
-SELECT skip('role-restore check only applies when this session ran CREATE EXTENSION itself (test_load_mode=fresh)', 1);
-\endif
+-- Role-restore verification (does CREATE EXTENSION correctly restore the
+-- calling role?) now lives in test/install/load.sql, where CREATE
+-- EXTENSION actually runs in every mode -- there's nothing to check here
+-- anymore now that this file no longer runs it itself.
 
 SELECT cmp_ok(
       proconfig

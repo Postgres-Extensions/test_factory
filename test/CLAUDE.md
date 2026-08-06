@@ -28,9 +28,6 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 ### Test Helpers
 - `test/helpers/setup.sql` - Test environment initialization and pgTAP setup
 - `test/helpers/create.sql` - Test data registration and security validation
-- `test/helpers/create_extension.sql` - Extension creation wrapper; skips
-  `CREATE EXTENSION` when `test/install/load.sql` already installed it
-  (`test_load_mode` is not `fresh`)
 - `test/helpers/deps.sql` - Test dependency management (`\i`'s `test/roles.sql`)
 - `test/roles.sql` - Single source of truth for test-only role names
 - Other helper files for role management and pgTAP integration
@@ -39,27 +36,28 @@ The test_factory extension uses **pgTAP** (PostgreSQL's unit testing framework) 
 
 `test/install/load.sql` runs once, committed, before the regular test files
 (pgxntool's `PGXNTOOL_ENABLE_TEST_INSTALL` feature), so its state survives
-into every test file. `TEST_LOAD_SOURCE` (default `fresh`) picks how the
-extension gets to its target state:
+into every test file. It is the *only* place that knows how the extension
+gets onto the system -- `test/sql/base.sql` and `test/sql/pgtap.sql` always
+assume both extensions are already installed, in every mode, and are
+otherwise identical regardless of which mode ran. `TEST_LOAD_SOURCE`
+(default `fresh`) picks how the extension gets to its target state:
 
-- **fresh** (default) - `load.sql` does nothing extra; `test/sql/*.sql`
-  install the extension themselves, exactly as before this feature existed.
-- **update** - `load.sql` does `CREATE EXTENSION test_factory VERSION
-  :from` then `ALTER EXTENSION UPDATE` (`TEST_UPDATE_FROM`/`TEST_UPDATE_TO`
-  make vars). test_factory has only ever shipped one version (0.5.0), so
-  this is a no-op today -- the mechanism exists for when a second version
-  ships, but no CI job drives it yet. `make test-update` is a shorthand for
-  `make test TEST_LOAD_SOURCE=update`.
+- **fresh** (default) - drops both extensions first (so a re-run against a
+  non-fresh dev DB starts clean), lands `pgtap` in a dedicated `tap` schema,
+  then `CREATE EXTENSION test_factory_pgtap CASCADE` (proving
+  `test_factory_pgtap.control`'s `requires` line actually pulls
+  `test_factory` in).
+- **update** - `CREATE EXTENSION test_factory VERSION :from` then
+  `ALTER EXTENSION UPDATE` (`TEST_UPDATE_FROM`/`TEST_UPDATE_TO` make vars),
+  then installs `test_factory_pgtap` at current (it has only ever shipped
+  one version, so there's no update path of its own to exercise yet -- the
+  mechanism exists for when a second version ships, but no CI job drives it
+  yet). `make test-update` is a shorthand for `make test
+  TEST_LOAD_SOURCE=update`.
 - **existing** - the extension is already installed (a real `pg_upgrade`
   target, or an out-of-band update) -- `load.sql` only asserts it's present
   at the current version, plants a dependency guard (see below), and
-  proves it. The install/dependency-order part of `test/sql/pgtap.sql` is
-  skipped in this mode (see the `\if :is_existing` branch in that file)
-  since it'd otherwise defeat the guard by doing its own from-scratch
-  drop/recreate. (Packaging/dependency-declaration checks used to live in
-  `test/sql/install.sql`; that file is gone -- see `test/build/install.sql`
-  below, which runs once via pg_regress's classic diffing rather than
-  per-`TEST_LOAD_SOURCE`-mode.)
+  proves it; never drops/creates/updates anything.
 
   Run against a real pre-existing install with:
   ```
@@ -67,11 +65,10 @@ extension gets to its target state:
     EXTRA_REGRESS_OPTS=--use-existing PGXNTOOL_ENABLE_TEST_BUILD=no
   ```
 
-  `existing` mode legitimately produces different (but equally valid)
-  output than `fresh`/`update` for `base`/`pgtap` (skipped sections, a
-  skipped role-restore check), so it has alternate expected files:
-  `test/expected/{base,pgtap}_1.out` (pg_regress's numbered
-  alternate-expected-file convention).
+All three modes leave the system in the same observable end state (both
+extensions installed, `pgtap` in schema `tap`), so `base.sql`/`pgtap.sql`
+and their expected output are shared across all of them -- no
+per-mode alternate expected files.
 
 ### Dependency Guard
 
@@ -89,19 +86,23 @@ upgraded/updated objects this mode exists to test.
 ## Test Coverage Analysis
 
 ### Core Functionality Tests (`base.sql`)
-1. **Extension Setup** - Creates extension and test tables
-2. **Data Registration** - Tests `tf.register()` with multiple test sets
-3. **Basic Retrieval** - Tests `tf.get()` returns correct data
-4. **Dependency Resolution** - Tests automatic creation of dependent data (customer → invoice)
-5. **Caching Behavior** - Verifies data consistency across multiple `tf.get()` calls  
-6. **Table Independence** - Tests that cached data persists after source table changes
-7. **Function-based Test Data** - Tests using functions as test data sources
+Assumes both extensions are already installed (by `test/install/load.sql`,
+in every mode) and test tables not yet created:
+1. **Data Registration** - Tests `tf.register()` with multiple test sets
+2. **Basic Retrieval** - Tests `tf.get()` returns correct data
+3. **Dependency Resolution** - Tests automatic creation of dependent data (customer → invoice)
+4. **Caching Behavior** - Verifies data consistency across multiple `tf.get()` calls  
+5. **Table Independence** - Tests that cached data persists after source table changes
+6. **Function-based Test Data** - Tests using functions as test data sources
 
 ### Security Tests (`create.sql`)
-- **Role Management** - Validates proper role restoration after installation
 - **Security Definer Functions** - Ensures all privileged functions use `search_path=pg_catalog`
 - **Permission Isolation** - Tests with unprivileged `test_role`
 - **Temp Table Cleanup** - Verifies temporary installation objects are removed
+
+Role-restore verification (does `CREATE EXTENSION` correctly restore the
+calling role?) lives in `test/install/load.sql` instead, where `CREATE
+EXTENSION` actually runs.
 
 ### Raw SQL Syntax Tests (`test/build/syntax.sql`)
 - Runs `sql/test_factory.sql` and `sql/test_factory_pgtap.sql` (the actual
@@ -111,8 +112,18 @@ upgraded/updated objects this mode exists to test.
 - See the comments in that file for the known/expected errors baked into its
   expected output (`pg_extension_config_dump()` and `SET ROLE ""`), which are
   artifacts of running the file outside of CREATE EXTENSION, not bugs.
+- This is the *only* thing `test/build` is for: running extension scripts
+  "bare" for better error context. Its results are always thrown away
+  (unlike `test/install`, which is intended to commit and persist).
+  Packaging checks (dependency declarations, clean install) belong in
+  `test/install/load.sql` instead.
 
 ### pgTAP Integration Tests (`pgtap.sql`)
+- **Dependency Enforcement** - Confirms `test_factory_pgtap.control`'s
+  `requires = 'pgtap, test_factory'` line is real and enforced by Postgres,
+  via a `pg_depend` extension-requires-extension edge (`deptype = 'n'`),
+  not just documentation. Checking final catalog state this way works
+  uniformly in every `TEST_LOAD_SOURCE` mode.
 - **tf.tap() Function** - Tests pgTAP wrapper functionality
 - **Error Handling** - Tests proper error reporting for invalid inputs
 

@@ -1,56 +1,41 @@
 \set ECHO none
 \i test/helpers/setup.sql
 
-/*
- * psql's \if only accepts a plain boolean token, not a comparison
- * expression -- compute it via SQL first.
- */
-SELECT current_setting('test_factory.test_load_mode') = 'existing' AS is_existing \gset
-
-\if :is_existing
+SET search_path = tap;
 
 /*
- * existing mode: both extensions are already installed (see
- * test/install/load.sql) -- don't touch install ordering here; that's what
- * the \else branch below tests. Bypass test/helpers/create_extension.sql
- * entirely rather than let it no-op: it skips creating pre_install_role /
- * post_install_role when the extension is already installed, and the
- * \else branch's DROP TABLE calls on those would then error. Packaging /
- * dependency-declaration checks now live in test/build/install.sql, not
- * here (see add-test-build). Just exercise tf.tap() against what's
- * already there.
+ * Prove test_factory_pgtap.control's "requires = 'pgtap, test_factory'"
+ * line is real and enforced by Postgres, not just documentation -- via a
+ * pg_depend extension-requires-extension edge, which CREATE EXTENSION
+ * always records for anything in `requires`, regardless of whether CASCADE
+ * was needed to satisfy it or the dependency was already present. Works
+ * uniformly in every TEST_LOAD_SOURCE mode, since it only inspects final
+ * state -- unlike attempting a bare, doomed CREATE EXTENSION
+ * test_factory_pgtap (the previous approach here), which only worked when
+ * this file could assume test_factory_pgtap wasn't installed yet; that
+ * assumption stopped holding once test/install/load.sql started installing
+ * both extensions in every mode, not just update/existing.
+ *
+ * deptype = 'n' (normal), NOT 'e': confirmed directly against a live
+ * database (`SELECT deptype, ... FROM pg_depend ...`) rather than assumed
+ * -- 'e' (DEPENDENCY_EXTENSION) is for "this object belongs to this
+ * extension" (e.g. a function belongs to test_factory), a completely
+ * different relationship from "this extension requires that extension",
+ * which pg_depend records as an ordinary 'n' dependency between the two
+ * pg_extension rows.
  */
-\i test/helpers/create.sql
-
-SELECT tf.tap( 'invoice' );
-SELECT tf.tap( 'invoice', 'base' );
-SELECT throws_ok(
-  $$SELECT tf.tap( '"non-existent table"' )$$
-  , '42P01'
-  , 'relation "non-existent table" does not exist'
-  , 'Ensure we get sane error for a non-existent table'
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM pg_depend d
+      JOIN pg_extension req ON d.objid = req.oid AND d.classid = 'pg_extension'::regclass
+      JOIN pg_extension dep ON d.refobjid = dep.oid AND d.refclassid = 'pg_extension'::regclass
+     WHERE req.extname = 'test_factory_pgtap'
+       AND dep.extname = 'test_factory'
+       AND d.deptype = 'n'
+  )
+  , 'test_factory_pgtap depends on test_factory (control file requires is real and enforced)'
 );
-
-\else
-
-\set extension_name test_factory
-\i test/helpers/create_extension.sql
-/*
- * update mode: load.sql already installed test_factory (never
- * test_factory_pgtap -- see test/install/load.sql), so the \i above just
- * skipped without creating pre_install_role/post_install_role (see
- * test/helpers/create_extension.sql's already_installed check) -- an
- * unconditional DROP TABLE here would error "does not exist". Guard the
- * same way test/helpers/create.sql already does for its own role-restore
- * check.
- */
-SELECT to_regclass('pg_temp.pre_install_role') IS NOT NULL AS has_role_capture \gset
-\if :has_role_capture
-DROP TABLE pre_install_role;
-DROP TABLE post_install_role;
-\endif
-\set extension_name test_factory_pgtap
-\i test/helpers/create_extension.sql
 
 -- NOTE: This runs some tests itself. It also changes search_path
 \i test/helpers/create.sql
@@ -64,8 +49,6 @@ SELECT throws_ok(
   , 'relation "non-existent table" does not exist'
   , 'Ensure we get sane error for a non-existent table'
 );
-
-\endif
 
 ROLLBACK;
 
