@@ -83,10 +83,12 @@ SELECT hasnt_table(
   , 'Ensure original_role temp table was dropped'
 );
 
--- Role-restore verification (does CREATE EXTENSION correctly restore the
--- calling role?) now lives in test/install/load.sql, where CREATE
--- EXTENSION actually runs in every mode -- there's nothing to check here
--- anymore now that this file no longer runs it itself.
+/*
+ * Role-restore verification (does CREATE EXTENSION correctly restore the
+ * calling role?) now lives in test/install/load.sql, where CREATE
+ * EXTENSION actually runs in every mode -- there's nothing to check here
+ * anymore now that this file no longer runs it itself.
+ */
 
 SELECT cmp_ok(
       proconfig

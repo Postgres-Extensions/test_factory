@@ -208,9 +208,11 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
     ALTER EXTENSION test_factory UPDATE;
     \endif
     SET client_min_messages = WARNING;
-    -- test_factory_pgtap has only ever shipped one version, so there's no
-    -- update path of its own to exercise -- just install it at current so
-    -- the rest of the suite can assume it's present, same as fresh mode.
+    /*
+     * test_factory_pgtap has only ever shipped one version, so there's no
+     * update path of its own to exercise -- just install it at current so
+     * the rest of the suite can assume it's present, same as fresh mode.
+     */
     CREATE EXTENSION test_factory_pgtap;
 
   \else
