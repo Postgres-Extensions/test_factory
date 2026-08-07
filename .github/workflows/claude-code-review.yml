@@ -39,10 +39,13 @@ jobs:
     # head.repo.owner.login is always this repo's OWN org, never the actual
     # author, so that check silently skipped review on every such PR
     # regardless of who opened it (caught when review kept skipping on a
-    # whole PR stack that was legitimately jnasbyupgrade's own work). PR
-    # author can't be spoofed by a third party either way, and it's the
-    # right question here anyway -- we're trusting the PERSON asking for a
-    # review to run, not the repository their branch happens to live in.
+    # whole PR stack that was legitimately jnasbyupgrade's own work).
+    # user.login is the PR's original author and can't be spoofed by PR
+    # content (unlike, say, a string embedded in the PR body or a commit
+    # message), so this check holds regardless of whether the PR head lives
+    # in this repo or an external fork -- it's the right question here
+    # anyway: we're trusting the PERSON asking for a review to run, not the
+    # repository their branch happens to live in.
     # Skips drafts too (don't spend API/CI on unfinished PRs).
     if: >-
       github.event.pull_request.draft == false &&
