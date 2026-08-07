@@ -31,5 +31,18 @@ jobs:
         run: pg-start ${{ matrix.pg }}
       - name: Check out the repo
         uses: actions/checkout@v4
+      # rsync first: pgxntool/run-test-build.sh needs it to sync
+      # test/build/*.sql into test/build/sql/, and the CONTAINER IMAGE
+      # doesn't ship rsync.
+      - name: Install rsync
+        run: apt-get install -y rsync
+      # We deliberately don't use `pg-build-test` (this job's CONTAINER
+      # IMAGE's own helper) for a few reasons -- notably, pgxntool marks
+      # `installcheck` `.IGNORE`, so pg-build-test's `make installcheck` can
+      # never actually detect a real regression failure (confirmed
+      # empirically with a deliberately broken test). `make verify-results`
+      # (pgxntool's own target) inspects the actual TAP output instead of
+      # trusting an exit code, and its dependency chain installs the
+      # extension itself, so no separate `make install` step is needed here.
       - name: Test on PostgreSQL ${{ matrix.pg }}
-        run: pg-build-test
+        run: make verify-results

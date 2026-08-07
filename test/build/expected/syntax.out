@@ -1,0 +1,6 @@
+\set ECHO none
+psql:sql/test_factory.sql:49: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
+psql:sql/test_factory.sql:50: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
+psql:sql/test_factory.sql:88: NOTICE:  type reference _tf._test_factory.set_name%TYPE converted to text
+psql:sql/test_factory.sql:110: NOTICE:  type reference _tf._test_factory.set_name%TYPE converted to text
+psql:sql/test_factory.sql:116: NOTICE:  type reference _tf._test_factory.set_name%TYPE converted to text

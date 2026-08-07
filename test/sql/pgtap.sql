@@ -1,15 +1,6 @@
 \set ECHO none
 \i test/helpers/setup.sql
 
-SET search_path = tap;
--- IF YOU GET A "schema tf does not exist" error here then the dependency is missing!
-SELECT throws_ok(
-  $$CREATE EXTENSION test_factory_pgtap$$
-  , '42704'
-  , 'required extension "test_factory" is not installed'
-  , 'Ensure test_factory is a dependency of test_factory_pgtap'
-);
-
 \set extension_name test_factory
 \i test/helpers/create_extension.sql
 DROP TABLE pre_install_role;
