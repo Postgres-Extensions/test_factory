@@ -32,10 +32,12 @@ SET client_min_messages = WARNING;
  * test_factory.test_load_mode, so an unset GUC here means the harness
  * itself is broken, not "assume fresh".
  */
-SELECT current_setting('test_factory.test_load_mode')   AS load_mode \gset
-SELECT current_setting('test_factory.test_update_from') AS update_from \gset
-SELECT current_setting('test_factory.test_update_to')   AS update_to \gset
-SELECT :'update_to' <> '' AS has_update_to \gset
+SELECT
+    current_setting('test_factory.test_load_mode')   AS load_mode
+  , current_setting('test_factory.test_update_from') AS update_from
+  , current_setting('test_factory.test_update_to')   AS update_to
+  , current_setting('test_factory.test_update_to') <> '' AS has_update_to
+\gset
 
 DO $$
 BEGIN
@@ -50,7 +52,8 @@ END $$;
  * target (existing mode) carries global objects like roles over, but don't
  * assume that; a from-scratch "existing" target might not have it.
  */
-SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'test_role') AS need_role \gset
+SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'test_role') AS need_role
+\gset
 \if :need_role
 CREATE ROLE :test_role;
 \endif
@@ -60,7 +63,8 @@ CREATE ROLE :test_role;
  * expression -- compute it via SQL first (\if :load_mode = 'existing' would
  * silently misparse instead of erroring).
  */
-SELECT :'load_mode' = 'existing' AS is_existing \gset
+SELECT :'load_mode' = 'existing' AS is_existing
+\gset
 \if :is_existing
 
   /*
@@ -195,9 +199,11 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
 
   -- Captured before either branch below runs CREATE EXTENSION, so the
   -- role-restore proof after \endif covers whichever one actually ran.
-  SELECT current_user AS role_before_install \gset
+  SELECT current_user AS role_before_install
+  \gset
 
-  SELECT :'load_mode' = 'update' AS is_update \gset
+  SELECT :'load_mode' = 'update' AS is_update
+  \gset
   \if :is_update
 
     CREATE EXTENSION test_factory VERSION :'update_from';
@@ -243,8 +249,10 @@ SELECT :'load_mode' = 'existing' AS is_existing \gset
    * already be gone by the time a later statement in this autocommit
    * session could read it.
    */
-  SELECT current_user AS role_after_install \gset
-  SELECT :'role_before_install' = :'role_after_install' AS role_was_restored \gset
+  SELECT current_user AS role_after_install
+  \gset
+  SELECT :'role_before_install' = :'role_after_install' AS role_was_restored
+  \gset
   \if :role_was_restored
   \else
   DO $$ BEGIN RAISE EXCEPTION 'CREATE EXTENSION did not restore the calling role'; END $$;
