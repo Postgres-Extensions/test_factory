@@ -4,25 +4,10 @@
 SET search_path = tap;
 
 /*
- * Prove test_factory_pgtap.control's "requires = 'pgtap, test_factory'"
- * line is real and enforced by Postgres, not just documentation -- via a
- * pg_depend extension-requires-extension edge, which CREATE EXTENSION
- * always records for anything in `requires`, regardless of whether CASCADE
- * was needed to satisfy it or the dependency was already present. Works
- * uniformly in every TEST_LOAD_SOURCE mode, since it only inspects final
- * state -- unlike attempting a bare, doomed CREATE EXTENSION
- * test_factory_pgtap (the previous approach here), which only worked when
- * this file could assume test_factory_pgtap wasn't installed yet; that
- * assumption stopped holding once test/install/load.sql started installing
- * both extensions in every mode, not just update/existing.
- *
- * deptype = 'n' (normal), NOT 'e': confirmed directly against a live
- * database (`SELECT deptype, ... FROM pg_depend ...`) rather than assumed
- * -- 'e' (DEPENDENCY_EXTENSION) is for "this object belongs to this
- * extension" (e.g. a function belongs to test_factory), a completely
- * different relationship from "this extension requires that extension",
- * which pg_depend records as an ordinary 'n' dependency between the two
- * pg_extension rows.
+ * Confirms test_factory_pgtap.control's "requires = 'pgtap, test_factory'"
+ * is actually enforced by Postgres, via a pg_depend extension-requires-
+ * extension edge -- deptype 'n' (normal), NOT 'e' (DEPENDENCY_EXTENSION,
+ * which instead means "this object belongs to this extension").
  */
 SELECT ok(
   EXISTS (

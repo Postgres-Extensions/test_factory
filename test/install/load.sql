@@ -65,6 +65,7 @@ CREATE ROLE :test_role;
  */
 SELECT :'load_mode' = 'existing' AS is_existing
 \gset
+-- existing-vs-fresh/update
 \if :is_existing
 
   /*
@@ -165,6 +166,7 @@ SELECT :'load_mode' = 'existing' AS is_existing
     END;
   END $$;
 
+-- existing-vs-fresh/update
 \else
 
   /*
@@ -204,6 +206,7 @@ SELECT :'load_mode' = 'existing' AS is_existing
 
   SELECT :'load_mode' = 'update' AS is_update
   \gset
+  -- update-vs-fresh install
   \if :is_update
 
     CREATE EXTENSION test_factory VERSION :'update_from';
@@ -221,6 +224,7 @@ SELECT :'load_mode' = 'existing' AS is_existing
      */
     CREATE EXTENSION test_factory_pgtap;
 
+  -- update-vs-fresh install
   \else
 
     /*
@@ -236,6 +240,7 @@ SELECT :'load_mode' = 'existing' AS is_existing
      */
     CREATE EXTENSION test_factory_pgtap CASCADE;
 
+  -- update-vs-fresh install
   \endif
 
   /*
@@ -258,6 +263,7 @@ SELECT :'load_mode' = 'existing' AS is_existing
   DO $$ BEGIN RAISE EXCEPTION 'CREATE EXTENSION did not restore the calling role'; END $$;
   \endif
 
+-- existing-vs-fresh/update
 \endif
 
 SET client_min_messages = NOTICE;
