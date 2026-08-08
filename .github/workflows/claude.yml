@@ -31,12 +31,19 @@ jobs:
       pull-requests: read
       issues: read
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      # write (not just read) despite the name: `write` includes read access
+      # to CI results, AND there's no narrower scope for cache-write alone --
+      # without it, claude-code-action's own internal setup silently fails to
+      # save its Actions cache ("Cache reservation failed: cache write
+      # denied: token has no writable scopes"), a warning not a hard
+      # failure, so the job still completes and looks fine, just
+      # slower/uncached every run. Don't "tighten" this back down to `read`.
+      actions: write
     steps:
       - name: Checkout repository
         # Intentionally tracks the major-version tag (not a pinned SHA) so
         # upstream fixes are picked up automatically.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
