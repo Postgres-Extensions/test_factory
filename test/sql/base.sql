@@ -1,8 +1,7 @@
 \set ECHO none
 \i test/helpers/setup.sql
 
-\set extension_name test_factory
-\i test/helpers/create_extension.sql
+-- test/install/load.sql already installed the extension, in every mode.
 
 -- NOTE: This runs some tests itself
 \i test/helpers/create.sql

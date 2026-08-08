@@ -6,6 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 After pushing to a branch with an open PR, monitor CI using `gh pr checks --watch` in a background subagent until all jobs pass or a failure is confirmed. Investigate and fix failures immediately rather than leaving them for the user to notice.
 
+## psql Script Conventions
+
+Any `\if`/`\elsif`/`\else`/`\endif` block spanning more than ~a dozen lines needs a short comment naming the block on each of its control statements (including `\endif`), so a reader scrolling past `\else`/`\endif` on their own can tell at a glance which `\if` they belong to without scrolling back up. Put the comment on its own line immediately above the control statement, NOT trailing on the same line -- unlike SQL statements, psql's `\if`/`\else`/`\endif` don't treat a trailing `--` as a comment to strip: `\if` parses the entire rest of the line as its boolean expression (so a trailing comment breaks parsing outright), and `\else`/`\endif` parse it as an "extra argument" that gets ignored but still prints a warning into the actual output. Example:
+
+```sql
+-- existing-mode install
+\if :is_existing
+  ...
+-- existing-mode install
+\else
+  ...
+-- existing-mode install
+\endif
+```
+
+Short `\if` blocks don't need this -- the `\if` is still visible on screen alongside its `\else`/`\endif`.
+
 ## Project Overview
 
 This is **test_factory**, a PostgreSQL extension that provides a framework for managing unit test data in databases. It solves the common problem of creating and maintaining test data by providing a system to register test data definitions once and retrieve them efficiently with automatic dependency resolution.

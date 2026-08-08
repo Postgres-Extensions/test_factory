@@ -1,13 +1,17 @@
 SET ROLE = DEFAULT;
-CREATE ROLE test_role;
-GRANT USAGE ON SCHEMA tap TO test_role;
+/*
+ * test_role itself is created once, idempotently, by test/install/load.sql
+ * (test/roles.sql is the single source of truth for the name; \i'd via
+ * test/helpers/deps.sql).
+ */
+GRANT USAGE ON SCHEMA tap TO :test_role;
 /*
  * DO NOT GRANT test_role TO test_factory__owner; the whole point test_role is
  * to check for security problems.
  */
 
-CREATE SCHEMA test AUTHORIZATION test_role;
-SET ROLE = test_role;
+CREATE SCHEMA test AUTHORIZATION :test_role;
+SET ROLE = :test_role;
 SET search_path = test, tap;
 
 CREATE TABLE customer(
@@ -79,11 +83,12 @@ SELECT hasnt_table(
   , 'Ensure original_role temp table was dropped'
 );
 
-SELECT is(
-  (SELECT * FROM post_install_role)
-  , (SELECT * FROM pre_install_role)
-  , 'Ensure role is put back after install'
-);
+/*
+ * Role-restore verification (does CREATE EXTENSION correctly restore the
+ * calling role?) now lives in test/install/load.sql, where CREATE
+ * EXTENSION actually runs in every mode -- there's nothing to check here
+ * anymore now that this file no longer runs it itself.
+ */
 
 SELECT cmp_ok(
       proconfig

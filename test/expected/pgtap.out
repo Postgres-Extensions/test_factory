@@ -1,11 +1,9 @@
 \set ECHO none
-Creating extension test_factory
-Creating extension test_factory_pgtap
-ok 1 - Register test customers
-ok 2 - Create function customer__add
-ok 3 - Register test invoices
-ok 4 - Ensure original_role temp table was dropped
-ok 5 - Ensure role is put back after install
+ok 1 - test_factory_pgtap depends on test_factory (control file requires is real and enforced)
+ok 2 - Register test customers
+ok 3 - Create function customer__add
+ok 4 - Register test invoices
+ok 5 - Ensure original_role temp table was dropped
 ok 6 - Security definer function _tf.schema__getsert has search_path=pg_catalog
 ok 7 - Security definer function _tf.test_factory__get has search_path=pg_catalog
 ok 8 - Security definer function _tf.test_factory__set has search_path=pg_catalog
