@@ -6,6 +6,19 @@
  * it's much lighter weight than creating a table.
  */
 SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
+
+/*
+ * SET LOCAL, not SET: reverts automatically at the end of this install's
+ * transaction, so it's scoped entirely to this script and never leaks into
+ * the calling session afterward -- nobody installing this extension needs
+ * to touch client_min_messages themselves, before or after. This covers a
+ * couple of harmless NOTICEs later in this file that Postgres emits for
+ * things this script does on purpose (see the %TYPE and GRANT comments
+ * below); suppressing them here, once, keeps a real CREATE EXTENSION quiet
+ * without asking every caller to do it themselves.
+ */
+SET LOCAL client_min_messages = WARNING;
+
 DO $body$
 BEGIN
 	CREATE ROLE test_factory__owner;
@@ -19,36 +32,18 @@ $body$;
  * As of PG16, CREATE ROLE no longer grants the creating role a SET-enabled
  * membership in the new role, so SET ROLE test_factory__owner below fails
  * unless the current role is a superuser (which bypasses the check). Grant it
- * explicitly WITH SET so a non-superuser install works too. Runs even when
- * the role already existed and CREATE ROLE was a no-op, but only when the
- * membership isn't already SET-enabled -- an unconditional re-GRANT is a
- * harmless no-op, but still emits a NOTICE naming the installing role, which
- * would make test/build/syntax.sql's raw re-run of this file (after
- * test/install/load.sql already installed it once) produce output that
- * differs by whichever role happens to be running the install. The
- * existence check itself must go through EXECUTE too, not just the GRANT --
- * pg_auth_members.set_option doesn't exist before PG16, so a plain (static)
- * reference to it would fail to parse on older servers even inside this
- * same version-gated IF, since PL/pgSQL parses a query's text as soon as it
- * reaches that statement, before evaluating whether the branch actually
- * runs. Building the query as a string and only EXECUTEing it once already
- * inside the PG16+ branch defers that parsing until it's safe. Pre-16
- * GRANT ... TO already confers the ability to SET ROLE, so none of this
- * runs there.
+ * explicitly WITH SET so a non-superuser install works too. Runs
+ * unconditionally, even when the role already existed and CREATE ROLE was a
+ * no-op and the membership is already SET-enabled -- that's a harmless
+ * no-op GRANT (the NOTICE it would otherwise print is exactly what the
+ * client_min_messages setting above is for). Gated on PG16+, where the
+ * WITH SET syntax exists; pre-16 GRANT ... TO already confers the ability
+ * to SET ROLE.
  */
 DO $body$
-DECLARE
-	already_set_enabled boolean;
 BEGIN
 	IF current_setting('server_version_num')::int >= 160000 THEN
-		EXECUTE format(
-			'SELECT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = %L::regrole AND member = %L::regrole AND set_option)'
-			, 'test_factory__owner'
-			, current_user
-		) INTO already_set_enabled;
-		IF NOT already_set_enabled THEN
-			EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
-		END IF;
+		EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
 	END IF;
 END
 $body$;
@@ -89,9 +84,19 @@ SELECT pg_catalog.pg_extension_config_dump('_tf._test_factory', '');
 SELECT pg_catalog.pg_extension_config_dump('_tf._test_factory_factory_id_seq', '');
 
 
+/*
+ * %TYPE here (and on the other two set_name parameters below) is
+ * intentional, not an oversight: it keeps this parameter's type tied to
+ * _test_factory.set_name's actual column type, so a future change to that
+ * column doesn't silently create a mismatch here that a hardcoded `text`
+ * would miss. Postgres can't preserve a %TYPE reference exactly in a
+ * function's parameter list -- it resolves it once at CREATE FUNCTION
+ * time and prints a NOTICE saying so every time. Harmless, and already
+ * suppressed for the whole install by client_min_messages above.
+ */
 CREATE OR REPLACE FUNCTION _tf.data_table_name(
   table_name text -- Sanitized by tf.test_factory__get()
-  , set_name text
+  , set_name _tf._test_factory.set_name%TYPE
 ) RETURNS name LANGUAGE plpgsql AS $body$
 DECLARE
   v_factory_id_text text;
@@ -129,7 +134,7 @@ $body$;
 
 CREATE OR REPLACE FUNCTION _tf.test_factory__get(
   table_name text -- Sanitized by tf.test_factory__get()
-  , set_name text
+  , set_name _tf._test_factory.set_name%TYPE
   , table_oid oid -- Must be passed in because of forced search_path
 ) RETURNS _tf._test_factory SECURITY DEFINER SET search_path = pg_catalog LANGUAGE plpgsql AS $body$
 DECLARE
@@ -149,7 +154,7 @@ END
 $body$;
 CREATE OR REPLACE FUNCTION tf.test_factory__get(
   table_name text
-  , set_name text
+  , set_name _tf._test_factory.set_name%TYPE
 ) RETURNS _tf._test_factory LANGUAGE sql AS $body$
 SELECT * FROM _tf.test_factory__get(table_name, set_name, table_name::regclass)
 $body$;
