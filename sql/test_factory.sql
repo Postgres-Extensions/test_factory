@@ -18,15 +18,36 @@ $body$;
  * As of PG16, CREATE ROLE no longer grants the creating role a SET-enabled
  * membership in the new role, so SET ROLE test_factory__owner below fails
  * unless the current role is a superuser (which bypasses the check). Grant it
- * explicitly WITH SET so a non-superuser install works too. Runs
- * unconditionally, even when the role already existed and CREATE ROLE was a
- * no-op. Gated on PG16+, where the WITH SET syntax exists; pre-16 GRANT ... TO
- * already confers the ability to SET ROLE.
+ * explicitly WITH SET so a non-superuser install works too. Runs even when
+ * the role already existed and CREATE ROLE was a no-op, but only when the
+ * membership isn't already SET-enabled -- an unconditional re-GRANT is a
+ * harmless no-op, but still emits a NOTICE naming the installing role, which
+ * would make test/build/syntax.sql's raw re-run of this file (after
+ * test/install/load.sql already installed it once) produce output that
+ * differs by whichever role happens to be running the install. The
+ * existence check itself must go through EXECUTE too, not just the GRANT --
+ * pg_auth_members.set_option doesn't exist before PG16, so a plain (static)
+ * reference to it would fail to parse on older servers even inside this
+ * same version-gated IF, since PL/pgSQL parses a query's text as soon as it
+ * reaches that statement, before evaluating whether the branch actually
+ * runs. Building the query as a string and only EXECUTEing it once already
+ * inside the PG16+ branch defers that parsing until it's safe. Pre-16
+ * GRANT ... TO already confers the ability to SET ROLE, so none of this
+ * runs there.
  */
 DO $body$
+DECLARE
+	already_set_enabled boolean;
 BEGIN
 	IF current_setting('server_version_num')::int >= 160000 THEN
-		EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+		EXECUTE format(
+			'SELECT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = %L::regrole AND member = %L::regrole AND set_option)'
+			, 'test_factory__owner'
+			, current_user
+		) INTO already_set_enabled;
+		IF NOT already_set_enabled THEN
+			EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+		END IF;
 	END IF;
 END
 $body$;
