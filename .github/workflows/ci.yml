@@ -18,9 +18,14 @@
 # in-place `ALTER EXTENSION UPDATE` path to test yet (no extension-update-test
 # job) and the pg_upgrade job needs no bridge step (it always installs the
 # CURRENT version on the old cluster -- there's no older, pg_upgrade-unsafe
-# version in the wild to carry forward). Both jobs derive their PostgreSQL
-# major list from the single source of truth computed in the `changes` job
-# below, so adding/dropping a supported major is a one-line edit there.
+# version in the wild to carry forward). The `test` job derives its
+# PostgreSQL major list from the single source of truth computed in the
+# `changes` job below, so adding/dropping a supported major is a one-line
+# edit there for that job. `pg-upgrade-test`'s matrix is NOT derived from
+# that same source -- its old_pg/new_pg pairs are hardcoded literals below,
+# deliberately chosen to straddle the PostgreSQL 16 boundary without ever
+# crossing it (see that job's own comment for why), so bumping NEWEST/FLOOR
+# does not automatically update it.
 name: CI
 on:
   # Post-merge CI only; pull_request already covers every PR commit. Without
@@ -190,13 +195,22 @@ jobs:
   # older, pg_upgrade-unsafe install to carry forward -- every leg installs
   # the current version directly on the old cluster.
   #
-  # Two legs, not an every-major stepwise climb (deliberately out of scope --
-  # see the PR description): the oldest-to-newest jump (widest catalog
-  # distance) and the newest-boundary jump (most likely to hit a *new*
-  # PostgreSQL major's catalog change first). test_factory has no views or
-  # functions touching catalog internals (no SELECT * over a system catalog),
-  # so the per-major-boundary risk a full stepwise climb protects against is
-  # low here.
+  # Two legs, deliberately chosen to each stay entirely on one side of the
+  # PostgreSQL 16 boundary (10->15 and 16->18), NEVER crossing PG16 itself.
+  # This is not an oversight: binary pg_upgrade does not re-run an
+  # extension's install script -- it recreates catalog/member objects
+  # directly to preserve OIDs/relfilenodes for the physical file copy -- so
+  # whatever SET-enabled role-membership state existed on the OLD cluster at
+  # original-install time is all pg_upgrade's globals-restore step has to
+  # carry forward, and it does not preserve it as SET-enabled when crossing
+  # the pre-16->16+ boundary specifically (PG16 introduced the `WITH SET`
+  # grant option and pg_auth_members.set_option; see issue #14's `GRANT ...
+  # WITH SET TRUE` fix). Nothing in this extension's own SQL can fix that,
+  # because the install script simply isn't invoked again during a binary
+  # upgrade. See the README's "Known limitation" note (pg_upgrade across the
+  # PG16 boundary) for the user-facing workaround -- this matrix shape is why
+  # CI cannot cover that specific path, by design, and a manual regression
+  # there would go undetected.
   pg-upgrade-test:
     # Also needs `test`, not just `changes`: without this, a trivially-broken
     # PR (fails the cheap fresh-install matrix) still burns the full,
@@ -207,8 +221,8 @@ jobs:
       matrix:
         include:
           - old_pg: "10"
-            new_pg: "18"
-          - old_pg: "17"
+            new_pg: "15"
+          - old_pg: "16"
             new_pg: "18"
     name: 🔄 Binary pg_upgrade ${{ matrix.old_pg }} → ${{ matrix.new_pg }}
     runs-on: ubuntu-latest

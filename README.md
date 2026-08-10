@@ -89,6 +89,39 @@ so:
 
     PGOPTIONS=--search_path=extensions psql -d mydb -f test_factory.sql
 
+Known limitation: binary pg_upgrade across PostgreSQL 16
+---------------------------------------------------------
+
+On PostgreSQL 16 and later, `CREATE EXTENSION test_factory` grants the
+installing role SET-enabled membership in `test_factory__owner` (`GRANT
+test_factory__owner TO <role> WITH SET TRUE`), which is what lets a
+non-superuser installer later `SET ROLE test_factory__owner` as needed.
+
+If test_factory was installed on a cluster running PostgreSQL 15 or earlier,
+and that cluster later underwent a **binary** `pg_upgrade` to PostgreSQL 16
+or later, the installing role's membership in `test_factory__owner` may come
+through the upgrade *without* the SET option, even though the same upgrade
+performed today (fresh-install on 16+) would have it. This happens because
+binary `pg_upgrade` does not re-run an extension's install script -- it
+reconstructs catalog objects directly to preserve OIDs/relfilenodes for the
+physical file copy -- so there is no opportunity for the fix above to run
+again during the upgrade itself. This is a `pg_upgrade` limitation, not a bug
+in test_factory's install script, and nothing in that script can work around
+it after the fact.
+
+If you hit a `must be able to SET ROLE "test_factory__owner"` error after
+such an upgrade, the workaround is to have a superuser run, once, against the
+affected database:
+
+    GRANT test_factory__owner TO <role> WITH SET TRUE;
+
+(substituting the actual role that owns/installed test_factory). CI does not
+and cannot exercise this specific pg_upgrade-across-PG16 path (see
+`.github/workflows/ci.yml`'s `pg-upgrade-test` job comment), so a future
+regression here would not be caught automatically -- if in doubt after an
+upgrade, just run the `GRANT` above; it's a no-op if the membership is
+already SET-enabled.
+
 Copyright and License
 ---------------------
 
