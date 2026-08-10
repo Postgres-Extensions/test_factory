@@ -6,25 +6,31 @@
 /*
  * Regression test for issue #14. On PostgreSQL 16+, CREATE ROLE no longer
  * grants the creating role a SET-enabled membership in the new role, so the
- * install must GRANT test_factory__owner ... WITH SET TRUE or the SET ROLE
- * performed during install fails for non-superuser installs (RDS/Aurora). A
- * real superuser bypasses the SET ROLE check, so a plain install here cannot
- * reproduce the failure; instead assert the SET-enabled membership the fix
- * establishes. pg_auth_members.set_option only exists on PG16+, so the check is
- * skipped (with identical TAP output) on older versions, where a plain
- * GRANT ... TO already confers the ability to SET ROLE.
+ * install must GRANT test_factory__owner ... WITH SET TRUE (when needed --
+ * see sql/test_factory.sql's own comment) or the SET ROLE performed during
+ * install fails for non-superuser installs (RDS/Aurora).
+ *
+ * pg_has_role(), not a raw pg_auth_members query: a real superuser always
+ * has effective SET privilege on every role (bypasses the check entirely,
+ * no explicit grant needed), which pg_has_role correctly reports as true --
+ * a literal catalog-row check would not, since CI's installer here IS a
+ * real superuser and the fix's own gating logic (also pg_has_role-based)
+ * correctly skips granting a superuser something they don't need. This is
+ * what the fix actually guarantees -- "can this role SET ROLE
+ * test_factory__owner", not "does a specific catalog row exist" -- and
+ * checking it the same way the fix does is what makes this a real
+ * regression test rather than an assertion about an implementation detail.
+ *
+ * pg_has_role's 'SET' privilege type is PG16+ only (same reasoning as
+ * sql/test_factory.sql), so the check is skipped (identical TAP output) on
+ * older versions, where a plain GRANT ... TO already confers the ability
+ * to SET ROLE.
  */
 SELECT (current_setting('server_version_num')::int >= 160000) AS pg16plus \gset
 -- pg16+ SET-enabled membership check
 \if :pg16plus
 SELECT ok(
-  EXISTS(
-    SELECT 1
-      FROM pg_auth_members
-      WHERE roleid = 'test_factory__owner'::regrole
-        AND member = current_user::regrole
-        AND set_option
-  )
+  pg_has_role(current_user, 'test_factory__owner', 'SET')
   , 'Installing role has SET-enabled membership in test_factory__owner (issue #14)'
 );
 -- pg16+ SET-enabled membership check
