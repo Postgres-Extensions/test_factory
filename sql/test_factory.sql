@@ -6,18 +6,6 @@
  */
 SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
 
-/*
- * SET LOCAL, not SET: reverts automatically at the end of this install's
- * transaction, so it's scoped entirely to this script and never leaks into
- * the calling session afterward -- nobody installing this extension needs
- * to touch client_min_messages themselves, before or after. This covers a
- * harmless NOTICE later in this file, from a %TYPE reference Postgres
- * can't preserve exactly in a function's parameter list; suppressing it
- * here, once, keeps a real CREATE EXTENSION quiet without asking every
- * caller to do it themselves.
- */
-SET LOCAL client_min_messages = WARNING;
-
 DO $body$
 BEGIN
 	CREATE ROLE test_factory__owner;

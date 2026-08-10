@@ -197,7 +197,8 @@ jobs:
   #
   # Two legs, deliberately chosen to each stay entirely on one side of the
   # PostgreSQL 16 boundary (10->15 and 16->18), never crossing PG16 itself:
-  # binary pg_upgrade doesn't re-run the install script, so issue #14's
+  # binary pg_upgrade doesn't re-run the install script, so
+  # https://github.com/Postgres-Extensions/test_factory/issues/14's
   # `GRANT ... WITH SET TRUE` fix can't reach a role grant that predates PG16
   # (see README's "Known limitation" section).
   pg-upgrade-test:
