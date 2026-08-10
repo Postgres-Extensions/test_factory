@@ -91,7 +91,7 @@ SELECT pg_catalog.pg_extension_config_dump('_tf._test_factory_factory_id_seq', '
 
 CREATE OR REPLACE FUNCTION _tf.data_table_name(
   table_name text -- Sanitized by tf.test_factory__get()
-  , set_name _tf._test_factory.set_name%TYPE
+  , set_name text
 ) RETURNS name LANGUAGE plpgsql AS $body$
 DECLARE
   v_factory_id_text text;
@@ -129,7 +129,7 @@ $body$;
 
 CREATE OR REPLACE FUNCTION _tf.test_factory__get(
   table_name text -- Sanitized by tf.test_factory__get()
-  , set_name _tf._test_factory.set_name%TYPE
+  , set_name text
   , table_oid oid -- Must be passed in because of forced search_path
 ) RETURNS _tf._test_factory SECURITY DEFINER SET search_path = pg_catalog LANGUAGE plpgsql AS $body$
 DECLARE
@@ -149,7 +149,7 @@ END
 $body$;
 CREATE OR REPLACE FUNCTION tf.test_factory__get(
   table_name text
-  , set_name _tf._test_factory.set_name%TYPE
+  , set_name text
 ) RETURNS _tf._test_factory LANGUAGE sql AS $body$
 SELECT * FROM _tf.test_factory__get(table_name, set_name, table_name::regclass)
 $body$;

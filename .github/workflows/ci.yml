@@ -196,21 +196,10 @@ jobs:
   # the current version directly on the old cluster.
   #
   # Two legs, deliberately chosen to each stay entirely on one side of the
-  # PostgreSQL 16 boundary (10->15 and 16->18), NEVER crossing PG16 itself.
-  # This is not an oversight: binary pg_upgrade does not re-run an
-  # extension's install script -- it recreates catalog/member objects
-  # directly to preserve OIDs/relfilenodes for the physical file copy -- so
-  # whatever SET-enabled role-membership state existed on the OLD cluster at
-  # original-install time is all pg_upgrade's globals-restore step has to
-  # carry forward, and it does not preserve it as SET-enabled when crossing
-  # the pre-16->16+ boundary specifically (PG16 introduced the `WITH SET`
-  # grant option and pg_auth_members.set_option; see issue #14's `GRANT ...
-  # WITH SET TRUE` fix). Nothing in this extension's own SQL can fix that,
-  # because the install script simply isn't invoked again during a binary
-  # upgrade. See the README's "Known limitation" note (pg_upgrade across the
-  # PG16 boundary) for the user-facing workaround -- this matrix shape is why
-  # CI cannot cover that specific path, by design, and a manual regression
-  # there would go undetected.
+  # PostgreSQL 16 boundary (10->15 and 16->18), never crossing PG16 itself:
+  # binary pg_upgrade doesn't re-run the install script, so issue #14's
+  # `GRANT ... WITH SET TRUE` fix can't reach a role grant that predates PG16
+  # (see README's "Known limitation" section).
   pg-upgrade-test:
     # Also needs `test`, not just `changes`: without this, a trivially-broken
     # PR (fails the cheap fresh-install matrix) still burns the full,
