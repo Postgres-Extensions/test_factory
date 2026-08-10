@@ -12,8 +12,7 @@ SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
  * transaction, so it's scoped entirely to this script and never leaks into
  * the calling session afterward -- nobody installing this extension needs
  * to touch client_min_messages themselves, before or after. This covers a
- * couple of harmless NOTICEs later in this file that Postgres emits for
- * things this script does on purpose (see the %TYPE and GRANT comments
+ * couple of harmless NOTICEs later in this file (see the GRANT comment
  * below); suppressing them here, once, keeps a real CREATE EXTENSION quiet
  * without asking every caller to do it themselves.
  */
@@ -84,16 +83,6 @@ SELECT pg_catalog.pg_extension_config_dump('_tf._test_factory', '');
 SELECT pg_catalog.pg_extension_config_dump('_tf._test_factory_factory_id_seq', '');
 
 
-/*
- * %TYPE here (and on the other two set_name parameters below) is
- * intentional, not an oversight: it keeps this parameter's type tied to
- * _test_factory.set_name's actual column type, so a future change to that
- * column doesn't silently create a mismatch here that a hardcoded `text`
- * would miss. Postgres can't preserve a %TYPE reference exactly in a
- * function's parameter list -- it resolves it once at CREATE FUNCTION
- * time and prints a NOTICE saying so every time. Harmless, and already
- * suppressed for the whole install by client_min_messages above.
- */
 CREATE OR REPLACE FUNCTION _tf.data_table_name(
   table_name text -- Sanitized by tf.test_factory__get()
   , set_name _tf._test_factory.set_name%TYPE
