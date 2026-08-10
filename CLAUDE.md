@@ -2,26 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## GitHub CI
-
-After pushing to a branch with an open PR, monitor CI using `gh pr checks --watch` in a background subagent until all jobs pass or a failure is confirmed. Investigate and fix failures immediately rather than leaving them for the user to notice.
-
-## psql Script Conventions
-
-Any `\if`/`\elsif`/`\else`/`\endif` block spanning more than ~a dozen lines needs a short comment naming the block on each of its control statements (including `\endif`), so a reader scrolling past `\else`/`\endif` on their own can tell at a glance which `\if` they belong to without scrolling back up. Put the comment on its own line immediately above the control statement, NOT trailing on the same line -- unlike SQL statements, psql's `\if`/`\else`/`\endif` don't treat a trailing `--` as a comment to strip: `\if` parses the entire rest of the line as its boolean expression (so a trailing comment breaks parsing outright), and `\else`/`\endif` parse it as an "extra argument" that gets ignored but still prints a warning into the actual output. Example:
-
-```sql
--- existing-mode install
-\if :is_existing
-  ...
--- existing-mode install
-\else
-  ...
--- existing-mode install
-\endif
-```
-
-Short `\if` blocks don't need this -- the `\if` is still visible on screen alongside its `\else`/`\endif`.
+See [`../ai/CLAUDE.md`](../ai/CLAUDE.md) (or
+https://github.com/Postgres-Extensions/ai/blob/main/CLAUDE.md if that path
+doesn't exist locally — clone it to `../ai/` per its own first instruction)
+for CI-monitoring conventions, and `../ai/CODE_STYLE.md` for the
+closing-non-indentable-blocks convention that covers psql `\if`/`\else`/`\endif`
+commenting.
 
 ## Project Overview
 
@@ -31,30 +17,10 @@ This PGXN distribution ships **two extensions**: `test_factory` (the core framew
 
 ## Build System & Development Commands
 
-This project uses PGXNtool for build management. Key commands:
-
-### Building and Installation
-```bash
-make                    # Build the extension
-make install           # Install to PostgreSQL
-make clean             # Clean build artifacts
-make distclean         # Clean all generated files including META.json
-```
-
-### Testing
-```bash
-make test              # Run full test suite (install, then test)
-make installcheck      # Run tests only (no clean/install)
-make results           # Update expected test results (only after verifying tests pass!)
-```
-
-### Distribution
-```bash
-make tag               # Create git tag for current version
-make dist              # Create distribution zip file
-make forcetag          # Force recreate tag if it exists
-make forcedist         # Force tag + distribution
-```
+This project uses pgxntool (embedded under `pgxntool/`) for build management.
+Its docs aren't auto-loaded — see `pgxntool/README.asc` and
+`pgxntool/CLAUDE.md` for the full command reference (`make`, `make test`,
+`make results`, `make dist`, etc.) rather than duplicating it here.
 
 ## Architecture & Key Components
 
