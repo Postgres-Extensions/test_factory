@@ -7,6 +7,14 @@ PGXNTOOL_ENABLE_TEST_BUILD = yes
 
 PGXNTOOL_ENABLE_TEST_INSTALL = yes
 
+# Already pgxntool's own default, but pinned explicitly (same reasoning as
+# ENABLE_TEST_INSTALL above): CI's `test`/`pg-upgrade-test` jobs gate on
+# `make verify-results`, not a bare `make test` -- pgxntool marks
+# installcheck .IGNORE, so a plain test run exits 0 even when
+# regression.diffs is nonempty. Relying on a default silently protects that
+# gate only until pgxntool's own default changes.
+PGXNTOOL_ENABLE_VERIFY_RESULTS = yes
+
 # ------------------------------------------------------------------------------
 # TEST_LOAD_SOURCE: how test/install/load.sql gets the extension to its
 # target state (fresh/update/existing). See test/install/load.sql for what

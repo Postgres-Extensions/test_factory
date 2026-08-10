@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+#
+# Exercise the test_factory test suite against a REAL database whose
+# extension was installed -- and, for the pg_upgrade CI job, binary
+# pg_upgraded -- OUTSIDE the suite ("existing" mode; see
+# test/install/load.sql and test/CLAUDE.md). Modeled on
+# Postgres-Extensions/cat_tools's bin/test_existing (same purpose), scoped
+# down: test_factory has shipped only one version, so there is no
+# bridge/multi-origin update path to carry, and every subcommand below
+# always targets the CURRENT build.
+#
+# USAGE: bin/test_existing <subcommand> [args]
+#
+#   prepare-old DB
+#       Old-cluster prep for the pg_upgrade CI job: create DB, then install
+#       pgtap into a dedicated "tap" schema BEFORE test_factory_pgtap
+#       installs, then CREATE EXTENSION test_factory_pgtap CASCADE (which
+#       pulls in test_factory) at the current version -- there is no older
+#       version to bridge from. The tap-schema-first ordering matters: if
+#       pgtap lands wherever the ambient search_path resolves instead (e.g.
+#       a bare CREATE EXTENSION test_factory_pgtap CASCADE with no schema
+#       prep), test_factory_pgtap's own suite (SET search_path = tap) can't
+#       find pgtap's functions and every test errors with "function
+#       no_plan() does not exist" -- hit for real while testing the
+#       foundation this script builds on (PR #22).
+#
+#   run-suite DB
+#       Assert the installed version matches the current build (never
+#       hardcoded -- derived from `make -s print-PGXNVERSION`, so a broken
+#       extraction can't silently compare "" to ""), then run the suite in
+#       existing mode via --use-existing (pg_regress must not drop/recreate
+#       DB) and gate on verify-results, not a bare `make test` (pgxntool
+#       marks installcheck .IGNORE, so a plain test run exits 0 even when
+#       regression.diffs is nonempty).
+#
+# No separate guard-planting subcommand: unlike cat_tools, test_factory's
+# dependency guard (a view in schema test_factory_drop_guard depending on
+# tf.tap(text,text)) is planted AND proved entirely inside
+# test/install/load.sql's existing-mode branch, which run-suite's `make
+# verify-results` invocation triggers as its own first regression step. This
+# script doesn't need to plant or re-prove it separately -- it exists to
+# protect the SUITE RUN itself (a stray non-CASCADE drop from a bug
+# elsewhere in the suite) rather than to prove the guard survived
+# pg_upgrade, since binary pg_upgrade either carries every user object over
+# intact or fails outright; there's no partial-survival case here for a
+# pre-upgrade guard to detect that a post-upgrade one wouldn't already
+# catch.
+set -euo pipefail
+
+# Run from the repository root regardless of the caller's cwd, same
+# resolution cat_tools's bin/test_existing uses.
+cd "$(dirname "$(readlink -f "$0")")/.."
+
+psql_do() {
+  local db=$1
+  shift
+  psql -d "$db" -v ON_ERROR_STOP=1 "$@"
+}
+
+current_version() {
+  make -s print-PGXNVERSION 2>/dev/null | sed -n 's/.*set to "\(.*\)"$/\1/p'
+}
+
+installed_version() {
+  psql -d "$1" -tAc "SELECT extversion FROM pg_extension WHERE extname = 'test_factory'"
+}
+
+# The empty-value guards matter -- "" != "" is false, so a broken extraction
+# on either side must not silently pass.
+assert_version() {
+  local db=$1 expected installed
+  expected=$(current_version)
+  installed=$(installed_version "$db")
+  echo "version check '$db': installed='$installed' expected='$expected'"
+  if [ -z "$installed" ] || [ -z "$expected" ] || [ "$installed" != "$expected" ]; then
+    echo "FAIL: test_factory in '$db' is '$installed', expected '$expected'" >&2
+    exit 1
+  fi
+}
+
+prepare_old() {
+  local db=$1
+  createdb "$db"
+  psql_do "$db" -c "CREATE SCHEMA tap; CREATE EXTENSION pgtap SCHEMA tap; CREATE EXTENSION test_factory_pgtap CASCADE;"
+}
+
+run_suite() {
+  local db=$1
+  assert_version "$db"
+  local existing_args="TEST_LOAD_SOURCE=existing CONTRIB_TESTDB=$db EXTRA_REGRESS_OPTS=--use-existing PGXNTOOL_ENABLE_TEST_BUILD=no"
+  # verify-results already depends on `test` (pgxntool's base.mk), so a
+  # separate `make test` call first would just re-run the entire regression
+  # suite a second time against the real migrated database for nothing --
+  # every pg-upgrade-test CI leg was paying for two full
+  # `pg_regress --use-existing` runs instead of one.
+  make verify-results $existing_args
+}
+
+usage() {
+  echo "usage: bin/test_existing <subcommand> [args]" >&2
+  echo "  prepare-old DB" >&2
+  echo "  run-suite DB" >&2
+  exit 2
+}
+
+main() {
+  local cmd=${1:-}
+  shift || true
+  case "$cmd" in
+    prepare-old) prepare_old "$@" ;;
+    run-suite)   run_suite "$@" ;;
+    *)           usage ;;
+  esac
+}
+
+main "$@"

@@ -6,11 +6,13 @@ name: Claude Code Review
 # `pull_request` version never worked for fork PRs.
 #
 # SECURITY: pull_request_target runs in the BASE repo with secrets and a
-# write-capable token. The job is gated to PRs from the trusted `jnasbyupgrade`
-# fork only — an arbitrary external fork can never trigger this secret-bearing
-# job. The workflow file always comes from the base branch (master), so a PR
-# cannot modify the reviewer that runs on it. We check out the PR head only for
-# read context (persist-credentials: false) and never build or execute PR code.
+# write-capable token. The job is gated to PRs authored by the trusted
+# `jnasbyupgrade` account only — an arbitrary external actor can never
+# trigger this secret-bearing job. The workflow file always comes from the
+# base branch (master), so a PR cannot modify the reviewer that runs on it.
+# This workflow never checks out the PR's own ref into the workspace (see the
+# checkout step below) -- claude-code-action fetches and reads the PR's
+# content itself, safely, and never builds or executes it.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -21,17 +23,46 @@ concurrency:
 
 jobs:
   claude-review:
-    # Trusted fork only, and skip drafts (don't spend API/CI on unfinished PRs).
-    # To add more trusted owners, extend the head-owner check.
+    # !!! SECURITY-CRITICAL -- DO NOT REMOVE OR WEAKEN THE user.login CHECK
+    # BELOW !!! It is the ONLY thing standing between an arbitrary external
+    # actor's PR and this job's write-capable GITHUB_TOKEN and
+    # CLAUDE_CODE_OAUTH_TOKEN. Drop or loosen this check and anyone can trigger
+    # a job that runs with this repo's secrets. To trust an additional
+    # account, EXTEND this condition explicitly (e.g. `|| ... ==
+    # 'other-trusted-account'`) -- never replace it with something broader
+    # (a wildcard, etc.).
+    #
+    # Checks PR AUTHOR (github.event.pull_request.user.login), not head repo
+    # owner: an earlier version of this check used head.repo.owner.login,
+    # which only works for fork-headed PRs -- for an upstream-branch-headed
+    # PR (e.g. one opened for `gh stack`, base and head both in this repo),
+    # head.repo.owner.login is always this repo's OWN org, never the actual
+    # author, so that check silently skipped review on every such PR
+    # regardless of who opened it (caught when review kept skipping on a
+    # whole PR stack that was legitimately jnasbyupgrade's own work).
+    # user.login is the PR's original author and can't be spoofed by PR
+    # content (unlike, say, a string embedded in the PR body or a commit
+    # message), so this check holds regardless of whether the PR head lives
+    # in this repo or an external fork -- it's the right question here
+    # anyway: we're trusting the PERSON asking for a review to run, not the
+    # repository their branch happens to live in.
+    # Skips drafts too (don't spend API/CI on unfinished PRs).
     if: >-
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.owner.login == 'jnasbyupgrade'
+      github.event.pull_request.user.login == 'jnasbyupgrade'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write   # post the review comments
       checks: read           # read sibling check-runs for the cost gate
+      # No narrower scope exists for cache-write alone; without this,
+      # claude-code-action's own internal setup silently fails to save its
+      # Actions cache ("Cache reservation failed: cache write denied: token
+      # has no writable scopes") -- a warning, not a hard failure, so the job
+      # still completes and looks fine, just slower/uncached every run. Don't
+      # try to "tighten" this down to something narrower; it doesn't exist.
+      actions: write
     steps:
       # COST GATE: the paid Claude review is the last thing to run. Wait for the
       # PR head's OTHER check-runs to finish and only proceed if they are clean.
@@ -74,15 +105,33 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "gate decision: $decision"
 
-      - name: Check out PR head (read-only context)
+      - name: Check out base branch
         if: steps.gate.outputs.decision == 'run'
+        # Deliberately NO ref:/repository: override -- this checks out this
+        # repo's own base branch (master), not the PR's fork/ref. Checking
+        # out an untrusted PR ref into the workspace root before this action
+        # is exactly the anti-pattern anthropics/claude-code-action's own
+        # docs/security.md warns against; its "preferred" pattern is a plain
+        # checkout of the base ref, nothing more. claude-code-action fetches
+        # and reviews the PR's actual content itself, from its own internal
+        # logic (src/github/operations/branch.ts): for a fork PR it fetches
+        # origin's refs/pull/<n>/head -- a ref GitHub maintains on THIS repo
+        # for any PR, fork or not, so it never needs direct access to the
+        # fork's own remote at all. That's why this step must leave `origin`
+        # pointing at this repo (the default) rather than being redirected to
+        # the fork: an earlier version of this step did that, which broke the
+        # action's own internal fetch ("couldn't find remote ref
+        # pull/<n>/head") since that ref doesn't exist on the fork.
         # Intentionally tracks the major-version tag (not a pinned SHA) so
         # upstream fixes are picked up automatically.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
+          # This job's permissions include pull-requests: write, a real
+          # write-capable credential -- nothing here legitimately runs `git
+          # push` (review comments post via the API/claude-code-action, not
+          # git), so there's no reason to leave that credential sitting in
+          # .git/config for the rest of the job to misuse if anything later
+          # goes wrong.
           persist-credentials: false
 
       - name: Run Claude Code Review
@@ -99,6 +148,16 @@ jobs:
           # marketplace repo's default branch (upstream anthropics/claude-code).
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
+          # A bare prompt: (no @claude mention) runs claude-code-action in
+          # "agent mode", which decides which MCP servers to start by
+          # scanning --allowedTools inside claude_args -- it does NOT consult
+          # the invoked plugin's own allowed-tools frontmatter. Without this,
+          # mcp__github_inline_comment__create_inline_comment never starts
+          # (not "exists but blocked" -- genuinely absent), so the
+          # code-review plugin silently falls back to one consolidated PR
+          # comment instead of real per-line inline comments. No error, no
+          # warning -- every review just quietly uses the wrong output shape.
+          claude_args: '--allowedTools mcp__github_inline_comment__create_inline_comment'
           # --comment is required: without it, the code-review plugin only
           # prints its findings to the job log and never posts anything to
           # the PR (confirmed by capturing the hidden SDK transcript on a
