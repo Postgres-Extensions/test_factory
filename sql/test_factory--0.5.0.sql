@@ -12,9 +12,10 @@ SELECT pg_catalog.set_config('test_factory.original_role', current_user, true);
  * transaction, so it's scoped entirely to this script and never leaks into
  * the calling session afterward -- nobody installing this extension needs
  * to touch client_min_messages themselves, before or after. This covers a
- * couple of harmless NOTICEs later in this file (see the GRANT comment
- * below); suppressing them here, once, keeps a real CREATE EXTENSION quiet
- * without asking every caller to do it themselves.
+ * harmless NOTICE later in this file, from a %TYPE reference Postgres
+ * can't preserve exactly in a function's parameter list; suppressing it
+ * here, once, keeps a real CREATE EXTENSION quiet without asking every
+ * caller to do it themselves.
  */
 SET LOCAL client_min_messages = WARNING;
 
@@ -30,19 +31,49 @@ $body$;
 /*
  * As of PG16, CREATE ROLE no longer grants the creating role a SET-enabled
  * membership in the new role, so SET ROLE test_factory__owner below fails
- * unless the current role is a superuser (which bypasses the check). Grant it
- * explicitly WITH SET so a non-superuser install works too. Runs
- * unconditionally, even when the role already existed and CREATE ROLE was a
- * no-op and the membership is already SET-enabled -- that's a harmless
- * no-op GRANT (the NOTICE it would otherwise print is exactly what the
- * client_min_messages setting above is for). Gated on PG16+, where the
- * WITH SET syntax exists; pre-16 GRANT ... TO already confers the ability
- * to SET ROLE.
+ * unless the current role is a superuser (which bypasses the check). Grant
+ * it explicitly WITH SET so a non-superuser install works too -- but only
+ * when it's actually missing (pg_has_role's 'SET' privilege type, PG16+
+ * only, but safe to call as a plain function argument inside this same
+ * version-gated branch -- unlike a static reference to
+ * pg_auth_members.set_option, which would fail on older servers even
+ * inside the gate). An installer might already have SET-enabled membership
+ * some other way -- e.g. a DBA pre-provisioned the role and granted it
+ * directly, deliberately withholding ADMIN OPTION as a least-privilege
+ * measure -- and GRANT ROLE requires ADMIN OPTION on the target role (or
+ * superuser) to run AT ALL, regardless of whether it would end up a no-op;
+ * forcing it unconditionally broke that already-working case (confirmed
+ * against a live non-superuser role with SET but not ADMIN OPTION:
+ * "ERROR: permission denied to grant role ... Only roles with the ADMIN
+ * option ... may grant this role").
+ *
+ * If the installer has neither SET-enabled membership nor ADMIN OPTION to
+ * grant it themselves, installation genuinely cannot proceed -- nobody
+ * else can do it on their behalf from inside this script. Catch that
+ * specific case and say so plainly instead of surfacing Postgres's generic
+ * permission error.
  */
 DO $body$
 BEGIN
-	IF current_setting('server_version_num')::int >= 160000 THEN
-		EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+	IF current_setting('server_version_num')::int >= 160000
+	   AND NOT pg_has_role(current_user, 'test_factory__owner', 'SET')
+	THEN
+		BEGIN
+			EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+		EXCEPTION
+			WHEN insufficient_privilege THEN
+				/*
+				 * RAISE's own %-substitution is plain string interpolation,
+				 * not format()'s %I/%L -- build the copy-pastable suggested
+				 * command with format() first (so the role name is properly
+				 * identifier-quoted), then substitute the whole result in
+				 * with a single, ordinary %.
+				 */
+				RAISE EXCEPTION
+					'Role "%" does not have SET-enabled membership in "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
+					, current_user
+					, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user);
+		END;
 	END IF;
 END
 $body$;

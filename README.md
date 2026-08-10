@@ -89,17 +89,22 @@ so:
 
     PGOPTIONS=--search_path=extensions psql -d mydb -f test_factory.sql
 
-Known limitation: binary pg_upgrade across PostgreSQL 16
----------------------------------------------------------
+Known limitation: SET-enabled membership in test_factory__owner
+------------------------------------------------------------------
 
 On PostgreSQL 16+, `CREATE EXTENSION test_factory` grants the installing
-role SET-enabled membership in `test_factory__owner`, which is what lets a
-non-superuser installer `SET ROLE test_factory__owner` as needed. Binary
-`pg_upgrade` doesn't re-run install scripts, so upgrading a pre-16 install
-across the PostgreSQL 16 boundary loses that SET option.
+role SET-enabled membership in `test_factory__owner`, needed to `SET ROLE
+test_factory__owner` as a non-superuser -- but only if the installer
+already has that membership, or has ADMIN OPTION on `test_factory__owner`
+to grant it themselves. If neither is true, `CREATE EXTENSION` fails
+immediately with an error naming exactly who needs to run what.
 
-If you hit `must be able to SET ROLE "test_factory__owner"` after such an
-upgrade, fix it once as a superuser:
+Binary `pg_upgrade` doesn't re-run install scripts, so upgrading a pre-16
+install across the PostgreSQL 16 boundary can leave a database without the
+SET-enabled grant a fresh install would have set up. Since no install
+script runs during the upgrade, this case isn't caught up front -- it
+surfaces later, as `must be able to SET ROLE "test_factory__owner"` from
+ordinary use (e.g. `tf.register()`). Fix it once as a superuser:
 
     GRANT test_factory__owner TO <role> WITH SET TRUE;
 
