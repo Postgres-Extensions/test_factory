@@ -118,9 +118,8 @@ SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'installer_role') AS 
 CREATE ROLE :installer_role CREATEROLE;
 \endif
 
-SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'installer_role') AS installer_db_grant
-\gset
-:installer_db_grant;
+SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'installer_role')
+\gexec
 
 /*
  * psql's \if only accepts a plain boolean token, not a comparison
@@ -239,20 +238,16 @@ SELECT :'load_mode' = 'existing' AS is_existing
    * bootstrapping (CREATE ROLE test_factory__owner, guarded by WHEN
    * duplicate_object in sql/test_factory.sql) already tolerates being
    * re-run, so unlike pgxntool's own drop-first example there's no
-   * separate role-drop step needed here.
+   * separate role-drop step needed here. Runs as the ambient role, not
+   * test_factory_installer: that's plausibly how the extension got here
+   * in the first place (a superuser), which the installer's narrower
+   * privileges might not be able to drop.
    */
   DROP EXTENSION IF EXISTS test_factory_pgtap CASCADE;
   DROP EXTENSION IF EXISTS test_factory CASCADE;
 
-  /*
-   * Drop-first reset above still runs as the ambient connecting role, not
-   * test_factory_installer: on a persistent local dev DB, pre-existing
-   * objects from before this role existed (or owned by a different role)
-   * need whatever privilege the ambient role already has (typically a
-   * developer's own superuser) to drop, not the installer's deliberately
-   * narrow privilege floor. Everything from here on -- the actual install
-   * this mode exists to test -- runs as the installer instead.
-   */
+  -- Everything from here on -- the actual install this mode exists to
+  -- test -- runs as the installer instead.
   SET SESSION AUTHORIZATION :installer_role;
 
   /*

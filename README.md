@@ -103,14 +103,8 @@ already has that membership, or has ADMIN OPTION on `test_factory__owner` to
 grant it themselves. If neither is true, `CREATE EXTENSION` fails
 immediately with an error naming exactly who needs to run what.
 
-Binary `pg_upgrade` doesn't re-run install scripts, so upgrading a pre-16
-install across the PostgreSQL 16 boundary can leave a database without the
-SET-enabled grant a fresh install would have set up. Since no install
-script runs during the upgrade, this case isn't caught up front -- it
-surfaces later, the next time an install/reinstall action runs `SET ROLE`
-(e.g. re-running `CREATE EXTENSION`) -- not from ordinary use of
-`tf.register()` or `tf.get()`, neither of which ever run `SET ROLE`. Fix it
-once as a superuser:
+If you ever do need to grant this membership manually (e.g. it was revoked,
+or a role was set up some other way):
 
     GRANT test_factory__owner TO <role> WITH SET TRUE;
 

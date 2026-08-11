@@ -1,3 +1,3 @@
 \set ECHO none
-psql:sql/test_factory.sql:122: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
-psql:sql/test_factory.sql:123: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
+psql:sql/test_factory.sql:128: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION
+psql:sql/test_factory.sql:129: ERROR:  pg_extension_config_dump() can only be called from an SQL script executed by CREATE EXTENSION

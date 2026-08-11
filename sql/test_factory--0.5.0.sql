@@ -69,9 +69,12 @@ BEGIN
 					 * ordinary %.
 					 */
 					RAISE EXCEPTION
-						'Role "%" does not have SET-enabled membership in "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
+						'role "%" lacks SET-enabled membership in "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
 						, current_user
-						, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user);
+						USING HINT = format(
+							'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
+							, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user)
+						);
 			END;
 		END IF;
 	ELSIF NOT pg_has_role(current_user, 'test_factory__owner', 'MEMBER') THEN
@@ -80,9 +83,12 @@ BEGIN
 		EXCEPTION
 			WHEN insufficient_privilege THEN
 				RAISE EXCEPTION
-					'Role "%" is not a member of "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
+					'role "%" is not a member of "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
 					, current_user
-					, format('GRANT test_factory__owner TO %I;', current_user);
+					USING HINT = format(
+						'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
+						, format('GRANT test_factory__owner TO %I;', current_user)
+					);
 		END;
 	END IF;
 END
