@@ -107,8 +107,10 @@ Binary `pg_upgrade` doesn't re-run install scripts, so upgrading a pre-16
 install across the PostgreSQL 16 boundary can leave a database without the
 SET-enabled grant a fresh install would have set up. Since no install
 script runs during the upgrade, this case isn't caught up front -- it
-surfaces later, as `must be able to SET ROLE "test_factory__owner"` from
-ordinary use (e.g. `tf.register()`). Fix it once as a superuser:
+surfaces later, the next time an install/reinstall action runs `SET ROLE`
+(e.g. re-running `CREATE EXTENSION`) -- not from ordinary use of
+`tf.register()` or `tf.get()`, neither of which ever run `SET ROLE`. Fix it
+once as a superuser:
 
     GRANT test_factory__owner TO <role> WITH SET TRUE;
 
