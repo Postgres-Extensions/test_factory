@@ -246,38 +246,29 @@ SELECT :'load_mode' = 'existing' AS is_existing
   DROP EXTENSION IF EXISTS test_factory_pgtap CASCADE;
   DROP EXTENSION IF EXISTS test_factory CASCADE;
 
-  -- Everything from here on -- the actual install this mode exists to
-  -- test -- runs as the installer instead.
-  SET SESSION AUTHORIZATION :installer_role;
-
-  /*
-   * pgtap must land in a dedicated "tap" schema BEFORE test_factory_pgtap
-   * installs, not after. test_factory_pgtap.control declares pgtap as a
-   * requirement too, so the CREATE EXTENSION ... CASCADE (or plain CREATE
-   * EXTENSION, in update mode) below would otherwise cascade-install pgtap
-   * itself into whatever schema this session's ambient search_path
-   * resolves to (public, by default) -- and since that satisfies "pgtap is
-   * already installed", the main suite's own tap_setup.sql (which does
-   * CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap) then skips creating it
-   * in "tap" at all, leaving every pgTAP-based test file failing with
-   * "function no_plan() does not exist" (hit this for real writing this
-   * file). IF NOT EXISTS on both statements: harmless no-op on a rerun
-   * where a previous pass already did this and the drop-first reset above
-   * didn't touch it (cascading test_factory_pgtap's drop doesn't remove
-   * pgtap -- pgtap is its dependency, not the other way around).
-   */
-  CREATE SCHEMA IF NOT EXISTS tap;
-  CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
-
-  -- Captured before either branch below runs CREATE EXTENSION, so the
-  -- role-restore proof after \endif covers whichever one actually ran.
-  SELECT current_user AS role_before_install
-  \gset
-
   SELECT :'load_mode' = 'update' AS is_update
   \gset
   -- update-vs-fresh install
   \if :is_update
+
+    /*
+     * update mode runs entirely as the ambient role, not
+     * test_factory_installer: extension ownership can't be transferred
+     * (`ALTER EXTENSION ... OWNER TO` isn't valid syntax -- confirmed),
+     * so only the role that ran the ORIGINAL CREATE EXTENSION can ever
+     * run ALTER EXTENSION UPDATE on it. There's no reachable "a
+     * different non-superuser applies this later" scenario to test here
+     * -- whether the original install itself could have been done
+     * non-superuser is exactly what the fresh branch below already
+     * proves.
+     */
+    CREATE SCHEMA IF NOT EXISTS tap;
+    CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
+
+    -- Captured before CREATE EXTENSION, so the role-restore proof below
+    -- covers it too.
+    SELECT current_user AS role_before_install
+    \gset
 
     CREATE EXTENSION test_factory VERSION :'update_from';
     SET client_min_messages = ERROR; -- suppress update-script deprecation NOTICEs
@@ -297,18 +288,85 @@ SELECT :'load_mode' = 'existing' AS is_existing
   -- update-vs-fresh install
   \else
 
+    -- Everything from here on -- the actual install this mode exists to
+    -- test -- runs as the installer instead.
+    SET SESSION AUTHORIZATION :installer_role;
+
     /*
-     * fresh: install for real, right here, uniformly with update/existing --
-     * so test/sql/base.sql and test/sql/pgtap.sql can assume both
-     * extensions are already present in every mode, instead of each mode
-     * needing its own install-or-skip dance (what test/helpers/
-     * create_extension.sql used to do; deleted along with this change).
+     * pgtap must land in a dedicated "tap" schema BEFORE test_factory_pgtap
+     * installs, not after. test_factory_pgtap.control declares pgtap as a
+     * requirement too, so the CREATE EXTENSION ... CASCADE below would
+     * otherwise cascade-install pgtap itself into whatever schema this
+     * session's ambient search_path resolves to (public, by default) --
+     * and since that satisfies "pgtap is already installed", the main
+     * suite's own tap_setup.sql (which does CREATE EXTENSION IF NOT
+     * EXISTS pgtap SCHEMA tap) then skips creating it in "tap" at all,
+     * leaving every pgTAP-based test file failing with "function
+     * no_plan() does not exist" (hit this for real writing this file).
+     * IF NOT EXISTS on both statements: harmless no-op on a rerun where a
+     * previous pass already did this and the drop-first reset above
+     * didn't touch it (cascading test_factory_pgtap's drop doesn't
+     * remove pgtap -- pgtap is its dependency, not the other way
+     * around).
+     */
+    CREATE SCHEMA IF NOT EXISTS tap;
+    CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
+
+    -- Captured before CREATE EXTENSION, so the role-restore proof below
+    -- covers it too.
+    SELECT current_user AS role_before_install
+    \gset
+
+    /*
      * CASCADE proves test_factory_pgtap.control's "requires = 'pgtap,
      * test_factory'" line actually pulls test_factory in --
      * test/sql/pgtap.sql separately proves the dependency is *enforced*
      * (via pg_depend), not just that cascade happens to work.
      */
     CREATE EXTENSION test_factory_pgtap CASCADE;
+
+    /*
+     * Regression test for https://github.com/Postgres-Extensions/test_factory/issues/14,
+     * checked from THIS session (still test_factory_installer, per the
+     * SET SESSION AUTHORIZATION above) rather than from
+     * test/sql/base.sql's own separate connection, which would only ever
+     * see whatever role CI or a developer happens to connect as --
+     * pg_has_role(current_user, ...) is unconditionally true for a
+     * superuser regardless of whether the fix's GRANT logic in
+     * sql/test_factory.sql ever ran. test_factory_installer is freshly
+     * created every run with zero prior relationships, so it can only
+     * have this membership if that GRANT actually fired -- there's no
+     * other way it could already be there. Only checked here, not in
+     * update mode above: update mode never switches to
+     * test_factory_installer (see its own comment), so current_user
+     * there is whatever ambient role connected -- typically a superuser,
+     * for whom this would be checking nothing.
+     *
+     * pg_has_role's 'SET' privilege type is PG16+ only (same reasoning as
+     * sql/test_factory.sql's own comment); pre-16, plain membership is
+     * the closest equivalent ('SET' isn't a meaningful distinction yet --
+     * membership itself already confers the ability to SET ROLE).
+     */
+    SELECT (current_setting('server_version_num')::int >= 160000) AS pg16plus
+    \gset
+    -- pg16+ SET-enabled membership check
+    \if :pg16plus
+    DO $$
+    BEGIN
+      IF NOT pg_has_role(current_user, 'test_factory__owner', 'SET') THEN
+        RAISE EXCEPTION 'issue #14 regression: % lacks SET-enabled membership in test_factory__owner after install', current_user;
+      END IF;
+    END $$;
+    -- pg16+ SET-enabled membership check
+    \else
+    DO $$
+    BEGIN
+      IF NOT pg_has_role(current_user, 'test_factory__owner', 'MEMBER') THEN
+        RAISE EXCEPTION 'issue #14 regression: % lacks membership in test_factory__owner after install', current_user;
+      END IF;
+    END $$;
+    -- pg16+ SET-enabled membership check
+    \endif
 
   -- update-vs-fresh install
   \endif
@@ -331,44 +389,6 @@ SELECT :'load_mode' = 'existing' AS is_existing
   \if :role_was_restored
   \else
   DO $$ BEGIN RAISE EXCEPTION 'CREATE EXTENSION did not restore the calling role'; END $$;
-  \endif
-
-  /*
-   * Regression test for https://github.com/Postgres-Extensions/test_factory/issues/14,
-   * checked from THIS session (still test_factory_installer, per the SET
-   * SESSION AUTHORIZATION above) rather than from test/sql/base.sql's own
-   * separate connection, which would only ever see whatever role CI or a
-   * developer happens to connect as -- pg_has_role(current_user, ...) is
-   * unconditionally true for a superuser regardless of whether the fix's
-   * GRANT logic in sql/test_factory.sql ever ran. test_factory_installer is
-   * freshly created every run with zero prior relationships, so it can only
-   * have this membership if that GRANT actually fired -- there's no other
-   * way it could already be there.
-   *
-   * pg_has_role's 'SET' privilege type is PG16+ only (same reasoning as
-   * sql/test_factory.sql's own comment); pre-16, plain membership is the
-   * closest equivalent ('SET' isn't a meaningful distinction yet --
-   * membership itself already confers the ability to SET ROLE).
-   */
-  SELECT (current_setting('server_version_num')::int >= 160000) AS pg16plus
-  \gset
-  -- pg16+ SET-enabled membership check
-  \if :pg16plus
-  DO $$
-  BEGIN
-    IF NOT pg_has_role(current_user, 'test_factory__owner', 'SET') THEN
-      RAISE EXCEPTION 'issue #14 regression: % lacks SET-enabled membership in test_factory__owner after install', current_user;
-    END IF;
-  END $$;
-  -- pg16+ SET-enabled membership check
-  \else
-  DO $$
-  BEGIN
-    IF NOT pg_has_role(current_user, 'test_factory__owner', 'MEMBER') THEN
-      RAISE EXCEPTION 'issue #14 regression: % lacks membership in test_factory__owner after install', current_user;
-    END IF;
-  END $$;
-  -- pg16+ SET-enabled membership check
   \endif
 
 -- existing-vs-fresh/update

@@ -1,5 +1,5 @@
 comment = 'A framework for managing test data'
-default_version = '0.1.0'
+default_version = 'stable'
 relocatable = false
 requires = 'pgtap, test_factory'
 # See test_factory.control -- same rationale.
