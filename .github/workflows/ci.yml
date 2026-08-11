@@ -3,29 +3,36 @@
 # A test_factory install can be arrived at two ways, each of which can break
 # differently, so each gets its own job below:
 #
-#   test             -- FRESH install: CREATE EXTENSION at the current
-#                        version, on every supported PostgreSQL major. The
-#                        baseline a brand-new user gets.
-#   pg-upgrade-test   -- BINARY pg_upgrade: install the current version on an
-#                        OLD major, binary-upgrade the cluster to a NEWER
-#                        major, then run the suite against the migrated
-#                        objects in "existing" mode (test/install/load.sql).
-#                        Proves objects created on an old server still work
-#                        read back on a new one -- fresh-install testing
-#                        never exercises this at all.
+#   test               -- FRESH install: CREATE EXTENSION at the current
+#                          version, on every supported PostgreSQL major, as
+#                          the superuser CI itself runs as. The baseline a
+#                          brand-new superuser install gets.
+#   test-nonsuperuser  -- FRESH install, same as `test`, but as a disposable
+#                          non-superuser installer role (bin/test_nonsuperuser)
+#                          on every supported major. `test`'s superuser
+#                          bypasses every role-membership check the fix for
+#                          https://github.com/Postgres-Extensions/test_factory/issues/14
+#                          added, so only this job actually exercises it.
+#   pg-upgrade-test    -- BINARY pg_upgrade: install the current version on an
+#                          OLD major, binary-upgrade the cluster to a NEWER
+#                          major, then run the suite against the migrated
+#                          objects in "existing" mode (test/install/load.sql).
+#                          Proves objects created on an old server still work
+#                          read back on a new one -- fresh-install testing
+#                          never exercises this at all.
 #
 # test_factory has shipped only one version (0.5.0), so there is no
 # in-place `ALTER EXTENSION UPDATE` path to test yet (no extension-update-test
 # job) and the pg_upgrade job needs no bridge step (it always installs the
 # CURRENT version on the old cluster -- there's no older, pg_upgrade-unsafe
-# version in the wild to carry forward). The `test` job derives its
-# PostgreSQL major list from the single source of truth computed in the
-# `changes` job below, so adding/dropping a supported major is a one-line
-# edit there for that job. `pg-upgrade-test`'s matrix is NOT derived from
-# that same source -- its old_pg/new_pg pairs are hardcoded literals below,
-# deliberately chosen to straddle the PostgreSQL 16 boundary without ever
-# crossing it (see that job's own comment for why), so bumping NEWEST/FLOOR
-# does not automatically update it.
+# version in the wild to carry forward). Both `test` and `test-nonsuperuser`
+# derive their PostgreSQL major list from the single source of truth computed
+# in the `changes` job below, so adding/dropping a supported major is a
+# one-line edit there for both jobs. `pg-upgrade-test`'s matrix is NOT derived
+# from that same source -- its old_pg/new_pg pairs are hardcoded literals
+# below, deliberately chosen to straddle the PostgreSQL 16 boundary without
+# ever crossing it (see that job's own comment for why), so bumping
+# NEWEST/FLOOR does not automatically update it.
 name: CI
 on:
   # Post-merge CI only; pull_request already covers every PR commit. Without
@@ -184,6 +191,34 @@ jobs:
       - name: Test on PostgreSQL ${{ matrix.pg }}
         run: make verify-results
 
+  # Proves test_factory_pgtap/test_factory are actually installable by a
+  # non-superuser (https://github.com/Postgres-Extensions/test_factory/issues/14),
+  # by running the whole suite as one -- not by asserting a property
+  # (pg_has_role(current_user, ...)) that's trivially true whenever the
+  # suite happens to run as the `test` job's own superuser regardless of
+  # whether the fix does anything (see PR #18's review comments). Matrixed
+  # across every supported major, not just one on either side of PG16: the
+  # fix itself branches there (pg_has_role's SET privtype is PG16+ only;
+  # pre-16 needs plain membership instead), so testing only one side would
+  # leave the other branch with the exact same always-green coverage gap
+  # this job exists to close.
+  test-nonsuperuser:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        pg: ${{ fromJSON(needs.changes.outputs.supported_pg) }}
+    name: 🔒 PostgreSQL ${{ matrix.pg }} (non-superuser installer)
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    steps:
+      - name: Start PostgreSQL ${{ matrix.pg }}
+        run: pg-start ${{ matrix.pg }}
+      - name: Check out the repo
+        uses: actions/checkout@v7
+      - name: Run the suite as a disposable non-superuser installer role
+        run: bin/test_nonsuperuser run test_factory_nonsuperuser tf_installer
+
   # Proves test_factory survives a BINARY pg_upgrade (in-place catalog
   # migration to a newer PostgreSQL major), not just a fresh CREATE EXTENSION.
   # Each leg: install the CURRENT version on an old cluster, binary-pg_upgrade
@@ -283,7 +318,7 @@ jobs:
   # jobs gated off by the `changes` job on a docs-only push), and fails if any
   # failed or were cancelled.
   all-checks-passed:
-    needs: [changes, lint, test, pg-upgrade-test]
+    needs: [changes, lint, test, test-nonsuperuser, pg-upgrade-test]
     if: always()
     runs-on: ubuntu-latest
     steps:

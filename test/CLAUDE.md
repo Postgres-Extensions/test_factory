@@ -70,6 +70,24 @@ extensions installed, `pgtap` in schema `tap`), so `base.sql`/`pgtap.sql`
 and their expected output are shared across all of them -- no
 per-mode alternate expected files.
 
+### Non-superuser installer (`bin/test_nonsuperuser`)
+
+Every mode above runs as whatever role CI or the developer happens to be
+connected as -- normally a superuser, which bypasses every role-membership
+check involved in
+https://github.com/Postgres-Extensions/test_factory/issues/14's fix
+(`pg_has_role(current_user, 'test_factory__owner', ...)` is unconditionally
+true for a superuser). Asserting that property from `base.sql` proves
+nothing about whether the fix works; it's true either way.
+
+`bin/test_nonsuperuser run <db> <role>` creates a disposable role (`LOGIN`,
+`NOSUPERUSER`, `CREATEROLE`) and database, grants the role `CREATE` on that
+database, then runs the suite's **fresh** mode with `PGUSER` set to that
+role via `EXTRA_REGRESS_OPTS=--use-existing` (so `pg_regress` doesn't
+drop/recreate the database out from under the grant just made). This is
+the CI `test-nonsuperuser` job's own entry point -- see `.github/workflows/
+ci.yml`'s top-of-file comment.
+
 ### Dependency Guard
 
 Planted only in `existing` mode (see `load.sql`): a view in schema

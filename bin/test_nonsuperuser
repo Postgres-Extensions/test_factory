@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Exercise the test suite through a genuine, disposable NON-SUPERUSER
+# installer role, to actually prove
+# https://github.com/Postgres-Extensions/test_factory/issues/14's fix works
+# -- rather than asserting a property (pg_has_role(current_user, ...)) that
+# is trivially true whenever the suite happens to run as CI's own
+# superuser, regardless of whether the fix does anything at all. Modeled on
+# bin/test_existing.
+#
+# USAGE: bin/test_nonsuperuser run DB ROLE
+#
+#   run DB ROLE
+#       Create DB and ROLE (LOGIN, NOSUPERUSER, CREATEROLE -- the exact
+#       privilege floor CREATE EXTENSION test_factory_pgtap needs: CREATEROLE
+#       for CREATE ROLE test_factory__owner, CREATE ON DATABASE for the
+#       schemas the install script creates), grant ROLE that CREATE
+#       privilege, then run the suite's fresh-install mode AS that role via
+#       PGUSER. --use-existing keeps pg_regress from dropping/recreating DB,
+#       which would throw away the GRANT just made.
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")/.."
+
+run() {
+  local db=$1 role=$2
+  createdb "$db"
+  createuser "$role" --no-superuser --no-createdb --createrole
+  psql -d "$db" -v ON_ERROR_STOP=1 -c "GRANT CREATE ON DATABASE \"$db\" TO \"$role\";"
+  PGUSER="$role" make verify-results \
+    TEST_LOAD_SOURCE=fresh \
+    CONTRIB_TESTDB="$db" \
+    EXTRA_REGRESS_OPTS=--use-existing \
+    PGXNTOOL_ENABLE_TEST_BUILD=no
+}
+
+usage() {
+  echo "usage: bin/test_nonsuperuser run DB ROLE" >&2
+  exit 2
+}
+
+main() {
+  local cmd=${1:-}
+  shift || true
+  case "$cmd" in
+    run) run "$@" ;;
+    *)   usage ;;
+  esac
+}
+
+main "$@"

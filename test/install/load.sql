@@ -59,6 +59,41 @@ CREATE ROLE :test_role;
 \endif
 
 /*
+ * Same issue as test_factory__owner (see sql/test_factory.sql's comment):
+ * CREATE ROLE alone never grants the creator any relationship to the role
+ * it just created, on ANY version -- confirmed directly, this session's
+ * connecting role gets "permission denied to set role" on the very role
+ * it just created above, with zero prior grant. test/helpers/create.sql's
+ * later SET ROLE = test_role needs SET-enabled membership on PG16+, or
+ * plain membership pre-16 (no WITH SET syntax there yet). Either branch
+ * skips the GRANT when it's not actually needed, since GRANT ROLE needs
+ * ADMIN OPTION to run at all, even for a no-op re-grant.
+ *
+ * Plain SQL + \if, not a DO block: :test_role is a psql variable, and psql
+ * never substitutes :variables inside a dollar-quoted body (confirmed
+ * directly -- it sends the literal text ":test_role" to the server,
+ * producing a syntax error there instead of anywhere client-side that
+ * would point at the real problem). GRANT ... TO CURRENT_USER sidesteps
+ * needing the *installer's* name dynamically at all -- CURRENT_USER is a
+ * real keyword, not a value needing substitution.
+ */
+SELECT (current_setting('server_version_num')::int >= 160000) AS test_role_pg16plus
+\gset
+\if :test_role_pg16plus
+SELECT NOT pg_has_role(current_user, :'test_role', 'SET') AS test_role_needs_grant
+\gset
+\if :test_role_needs_grant
+GRANT :test_role TO CURRENT_USER WITH SET TRUE;
+\endif
+\else
+SELECT NOT pg_has_role(current_user, :'test_role', 'MEMBER') AS test_role_needs_grant
+\gset
+\if :test_role_needs_grant
+GRANT :test_role TO CURRENT_USER;
+\endif
+\endif
+
+/*
  * psql's \if only accepts a plain boolean token, not a comparison
  * expression -- compute it via SQL first (\if :load_mode = 'existing' would
  * silently misparse instead of erroring).

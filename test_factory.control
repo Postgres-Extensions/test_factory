@@ -1,3 +1,11 @@
 comment = 'A framework for managing test data'
 default_version = '0.5.0'
 relocatable = false
+# Not a security boundary weakening: test_factory__owner is a locked-down,
+# dedicated owner role, and every privileged function is SECURITY DEFINER
+# with search_path=pg_catalog specifically so this is safe to install
+# without a real superuser (e.g. RDS/Aurora's non-superuser master user).
+# Installing still requires CREATEROLE (for test_factory__owner) plus
+# CREATE on the target database -- an ordinary role gets neither by
+# default.
+superuser = false

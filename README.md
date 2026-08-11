@@ -92,11 +92,15 @@ so:
 Known limitation: SET-enabled membership in test_factory__owner
 ------------------------------------------------------------------
 
-On PostgreSQL 16+, `CREATE EXTENSION test_factory` grants the installing
-role SET-enabled membership in `test_factory__owner`, needed to `SET ROLE
-test_factory__owner` as a non-superuser -- but only if the installer
-already has that membership, or has ADMIN OPTION on `test_factory__owner`
-to grant it themselves. If neither is true, `CREATE EXTENSION` fails
+`CREATE EXTENSION test_factory` doesn't require a superuser -- a role with
+CREATEROLE (to create `test_factory__owner`) and CREATE on the target
+database (for the schemas the install script creates) is enough.
+
+Installing this way grants the installing role membership in
+`test_factory__owner` -- SET-enabled on PostgreSQL 16+ (needed to `SET ROLE
+test_factory__owner`), plain membership pre-16 -- but only if the installer
+already has that membership, or has ADMIN OPTION on `test_factory__owner` to
+grant it themselves. If neither is true, `CREATE EXTENSION` fails
 immediately with an error naming exactly who needs to run what.
 
 Binary `pg_upgrade` doesn't re-run install scripts, so upgrading a pre-16

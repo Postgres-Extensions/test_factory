@@ -16,25 +16,36 @@ END
 $body$;
 
 /*
- * As of PG16, CREATE ROLE no longer grants the creating role a SET-enabled
- * membership in the new role, so SET ROLE test_factory__owner below fails
- * unless the current role is a superuser (which bypasses the check). Grant
- * it explicitly WITH SET so a non-superuser install works too -- but only
- * when it's actually missing (pg_has_role's 'SET' privilege type, PG16+
- * only, but safe to call as a plain function argument inside this same
- * version-gated branch -- unlike a static reference to
- * pg_auth_members.set_option, which would fail on older servers even
- * inside the gate). An installer might already have SET-enabled membership
- * some other way -- e.g. a DBA pre-provisioned the role and granted it
- * directly, deliberately withholding ADMIN OPTION as a least-privilege
- * measure -- and GRANT ROLE requires ADMIN OPTION on the target role (or
- * superuser) to run AT ALL, regardless of whether it would end up a no-op;
- * forcing it unconditionally broke that already-working case (confirmed
- * against a live non-superuser role with SET but not ADMIN OPTION:
- * "ERROR: permission denied to grant role ... Only roles with the ADMIN
- * option ... may grant this role").
+ * CREATE ROLE alone never grants the creator any relationship to the role
+ * it just created -- on ANY version, confirmed directly against a genuine
+ * non-superuser CREATEROLE installer with zero prior grants: SET ROLE
+ * test_factory__owner below fails outright ("permission denied to set
+ * role") without an explicit GRANT first, even immediately after this
+ * same session created it. A real superuser bypasses the SET ROLE check
+ * entirely regardless of any of this, which is why this was easy to miss
+ * without testing against a genuine non-superuser role.
  *
- * If the installer has neither SET-enabled membership nor ADMIN OPTION to
+ * As of PG16, plain membership isn't enough either -- SET ROLE requires
+ * the SET option specifically, which needs GRANT ... WITH SET TRUE.
+ * Before PG16, plain membership (no WITH SET syntax, which doesn't exist
+ * yet) already confers the ability to SET ROLE. pg_has_role's 'SET'
+ * privilege type is PG16+ only, but as a plain function argument (not a
+ * catalog column reference) it's safe to call inside this same
+ * version-gated branch, unlike a static reference to
+ * pg_auth_members.set_option, which would fail to parse on older servers
+ * even inside the gate.
+ *
+ * Either way, skip the GRANT when it's not actually needed: an installer
+ * might already have the membership it needs some other way -- e.g. a DBA
+ * pre-provisioned the role and granted it directly, deliberately
+ * withholding ADMIN OPTION as a least-privilege measure -- and GRANT ROLE
+ * requires ADMIN OPTION on the target role (or superuser) to run AT ALL,
+ * regardless of whether it would end up a no-op; forcing it unconditionally
+ * broke that already-working case (confirmed against a live non-superuser
+ * role with SET but not ADMIN OPTION: "ERROR: permission denied to grant
+ * role ... Only roles with the ADMIN option ... may grant this role").
+ *
+ * If the installer has neither the membership it needs nor ADMIN OPTION to
  * grant it themselves, installation genuinely cannot proceed -- nobody
  * else can do it on their behalf from inside this script. Catch that
  * specific case and say so plainly instead of surfacing Postgres's generic
@@ -42,24 +53,35 @@ $body$;
  */
 DO $body$
 BEGIN
-	IF current_setting('server_version_num')::int >= 160000
-	   AND NOT pg_has_role(current_user, 'test_factory__owner', 'SET')
-	THEN
+	IF current_setting('server_version_num')::int >= 160000 THEN
+		IF NOT pg_has_role(current_user, 'test_factory__owner', 'SET') THEN
+			BEGIN
+				EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+			EXCEPTION
+				WHEN insufficient_privilege THEN
+					/*
+					 * RAISE's own %-substitution is plain string
+					 * interpolation, not format()'s %I/%L -- build the
+					 * copy-pastable suggested command with format() first
+					 * (so the role name is properly identifier-quoted),
+					 * then substitute the whole result in with a single,
+					 * ordinary %.
+					 */
+					RAISE EXCEPTION
+						'Role "%" does not have SET-enabled membership in "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
+						, current_user
+						, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user);
+			END;
+		END IF;
+	ELSIF NOT pg_has_role(current_user, 'test_factory__owner', 'MEMBER') THEN
 		BEGIN
-			EXECUTE format('GRANT test_factory__owner TO %I WITH SET TRUE', current_user);
+			EXECUTE format('GRANT test_factory__owner TO %I', current_user);
 		EXCEPTION
 			WHEN insufficient_privilege THEN
-				/*
-				 * RAISE's own %-substitution is plain string interpolation,
-				 * not format()'s %I/%L -- build the copy-pastable suggested
-				 * command with format() first (so the role name is properly
-				 * identifier-quoted), then substitute the whole result in
-				 * with a single, ordinary %.
-				 */
 				RAISE EXCEPTION
-					'Role "%" does not have SET-enabled membership in "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
+					'Role "%" is not a member of "test_factory__owner" and lacks ADMIN OPTION to grant it to itself. Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %'
 					, current_user
-					, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user);
+					, format('GRANT test_factory__owner TO %I;', current_user);
 		END;
 	END IF;
 END
