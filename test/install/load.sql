@@ -94,6 +94,35 @@ GRANT :test_role TO CURRENT_USER;
 \endif
 
 /*
+ * test_factory_installer (see test/roles.sql): the fresh/update branch
+ * below runs CREATE EXTENSION as this role, not as whatever ambient role
+ * connected (CI's superuser, a developer's own local superuser) -- if a
+ * non-superuser with the exact privilege floor CREATE EXTENSION needs
+ * (CREATEROLE, CREATE on this database) can install it, a superuser
+ * certainly can too, since superuser bypasses every check that role is
+ * deliberately still subject to. This is what actually exercises
+ * https://github.com/Postgres-Extensions/test_factory/issues/14's fix --
+ * running the *same* suite twice, once as a superuser and once as a
+ * separate non-superuser role, would just waste CI time proving the
+ * (already-guaranteed) superuser case a second time.
+ *
+ * No LOGIN attribute: unlike test_role, nothing ever connects AS this role
+ * directly -- it's only ever reached via SET SESSION AUTHORIZATION within
+ * this same already-authenticated session, further below. That sidesteps
+ * needing a password or relying on whatever auth method (peer, trust,
+ * scram) the connecting user happens to have configured for it.
+ */
+SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'installer_role') AS need_installer
+\gset
+\if :need_installer
+CREATE ROLE :installer_role CREATEROLE;
+\endif
+
+SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'installer_role') AS installer_db_grant
+\gset
+:installer_db_grant;
+
+/*
  * psql's \if only accepts a plain boolean token, not a comparison
  * expression -- compute it via SQL first (\if :load_mode = 'existing' would
  * silently misparse instead of erroring).
@@ -216,6 +245,17 @@ SELECT :'load_mode' = 'existing' AS is_existing
   DROP EXTENSION IF EXISTS test_factory CASCADE;
 
   /*
+   * Drop-first reset above still runs as the ambient connecting role, not
+   * test_factory_installer: on a persistent local dev DB, pre-existing
+   * objects from before this role existed (or owned by a different role)
+   * need whatever privilege the ambient role already has (typically a
+   * developer's own superuser) to drop, not the installer's deliberately
+   * narrow privilege floor. Everything from here on -- the actual install
+   * this mode exists to test -- runs as the installer instead.
+   */
+  SET SESSION AUTHORIZATION :installer_role;
+
+  /*
    * pgtap must land in a dedicated "tap" schema BEFORE test_factory_pgtap
    * installs, not after. test_factory_pgtap.control declares pgtap as a
    * requirement too, so the CREATE EXTENSION ... CASCADE (or plain CREATE
@@ -296,6 +336,44 @@ SELECT :'load_mode' = 'existing' AS is_existing
   \if :role_was_restored
   \else
   DO $$ BEGIN RAISE EXCEPTION 'CREATE EXTENSION did not restore the calling role'; END $$;
+  \endif
+
+  /*
+   * Regression test for https://github.com/Postgres-Extensions/test_factory/issues/14,
+   * checked from THIS session (still test_factory_installer, per the SET
+   * SESSION AUTHORIZATION above) rather than from test/sql/base.sql's own
+   * separate connection, which would only ever see whatever role CI or a
+   * developer happens to connect as -- pg_has_role(current_user, ...) is
+   * unconditionally true for a superuser regardless of whether the fix's
+   * GRANT logic in sql/test_factory.sql ever ran. test_factory_installer is
+   * freshly created every run with zero prior relationships, so it can only
+   * have this membership if that GRANT actually fired -- there's no other
+   * way it could already be there.
+   *
+   * pg_has_role's 'SET' privilege type is PG16+ only (same reasoning as
+   * sql/test_factory.sql's own comment); pre-16, plain membership is the
+   * closest equivalent ('SET' isn't a meaningful distinction yet --
+   * membership itself already confers the ability to SET ROLE).
+   */
+  SELECT (current_setting('server_version_num')::int >= 160000) AS pg16plus
+  \gset
+  -- pg16+ SET-enabled membership check
+  \if :pg16plus
+  DO $$
+  BEGIN
+    IF NOT pg_has_role(current_user, 'test_factory__owner', 'SET') THEN
+      RAISE EXCEPTION 'issue #14 regression: % lacks SET-enabled membership in test_factory__owner after install', current_user;
+    END IF;
+  END $$;
+  -- pg16+ SET-enabled membership check
+  \else
+  DO $$
+  BEGIN
+    IF NOT pg_has_role(current_user, 'test_factory__owner', 'MEMBER') THEN
+      RAISE EXCEPTION 'issue #14 regression: % lacks membership in test_factory__owner after install', current_user;
+    END IF;
+  END $$;
+  -- pg16+ SET-enabled membership check
   \endif
 
 -- existing-vs-fresh/update

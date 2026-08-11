@@ -1,52 +1,8 @@
 \set ECHO none
 \i test/helpers/setup.sql
 
--- test/install/load.sql already installed the extension, in every mode.
-
-/*
- * Regression test for issue #14. CREATE ROLE never grants the creating role
- * any relationship to the role it just created, on any version, so the
- * install must GRANT test_factory__owner explicitly (WITH SET TRUE on
- * PostgreSQL 16+, plain on older versions -- see sql/test_factory.sql's own
- * comment) or the SET ROLE performed during install fails for
- * non-superuser installs (RDS/Aurora).
- *
- * pg_has_role(), not a raw pg_auth_members query: a real superuser always
- * has effective SET/membership on every role (bypasses the check entirely,
- * no explicit grant needed), which pg_has_role correctly reports as true --
- * a literal catalog-row check would not, since CI's installer here IS a
- * real superuser and the fix's own gating logic (also pg_has_role-based)
- * correctly skips granting a superuser something they don't need. This is
- * what the fix actually guarantees -- "can this role SET ROLE
- * test_factory__owner", not "does a specific catalog row exist" -- and
- * checking it the same way the fix does is what makes this a real
- * regression test rather than an assertion about an implementation detail.
- *
- * Both branches only actually catch a regression when the suite runs as a
- * genuine non-superuser (bin/test_nonsuperuser, the CI test-nonsuperuser
- * job) -- pg_has_role is unconditionally true for the superuser this file
- * otherwise runs as, same as it is for the fix's own gating logic.
- *
- * pg_has_role's 'SET' privilege type is PG16+ only (same reasoning as
- * sql/test_factory.sql); pre-16, plain membership is the closest equivalent
- * ('SET' isn't a meaningful distinction yet -- membership itself already
- * confers the ability to SET ROLE).
- */
-SELECT (current_setting('server_version_num')::int >= 160000) AS pg16plus \gset
--- pg16+ SET-enabled membership check
-\if :pg16plus
-SELECT ok(
-  pg_has_role(current_user, 'test_factory__owner', 'SET')
-  , 'Installing role has SET-enabled membership in test_factory__owner (issue #14)'
-);
--- pg16+ SET-enabled membership check
-\else
-SELECT ok(
-  pg_has_role(current_user, 'test_factory__owner', 'MEMBER')
-  , 'Installing role has SET-enabled membership in test_factory__owner (issue #14)'
-);
--- pg16+ SET-enabled membership check
-\endif
+-- test/install/load.sql already installed the extension, in every mode
+-- (including the regression test for issue #14 -- see its own comment).
 
 -- NOTE: This runs some tests itself
 \i test/helpers/create.sql

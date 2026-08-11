@@ -70,23 +70,27 @@ extensions installed, `pgtap` in schema `tap`), so `base.sql`/`pgtap.sql`
 and their expected output are shared across all of them -- no
 per-mode alternate expected files.
 
-### Non-superuser installer (`bin/test_nonsuperuser`)
+### Non-superuser installer (`test_factory_installer`)
 
-Every mode above runs as whatever role CI or the developer happens to be
-connected as -- normally a superuser, which bypasses every role-membership
-check involved in
+Connecting as a superuser (CI's default, and most developers' local setup)
+bypasses every role-membership check involved in
 https://github.com/Postgres-Extensions/test_factory/issues/14's fix
 (`pg_has_role(current_user, 'test_factory__owner', ...)` is unconditionally
-true for a superuser). Asserting that property from `base.sql` proves
-nothing about whether the fix works; it's true either way.
+true for a superuser). Asserting that property from `base.sql` while
+staying connected as a superuser would prove nothing about whether the fix
+works -- it's true either way.
 
-`bin/test_nonsuperuser run <db> <role>` creates a disposable role (`LOGIN`,
-`NOSUPERUSER`, `CREATEROLE`) and database, grants the role `CREATE` on that
-database, then runs the suite's **fresh** mode with `PGUSER` set to that
-role via `EXTRA_REGRESS_OPTS=--use-existing` (so `pg_regress` doesn't
-drop/recreate the database out from under the grant just made). This is
-the CI `test-nonsuperuser` job's own entry point -- see `.github/workflows/
-ci.yml`'s top-of-file comment.
+Rather than running the whole suite a second time as a separate disposable
+role (which would only prove what's already implied: a superuser can do
+anything a properly-privileged non-superuser can), `load.sql`'s own
+fresh/update branch creates a non-login `test_factory_installer` role
+(`CREATEROLE` only -- the exact privilege floor `CREATE EXTENSION` needs,
+paired with `CREATE` granted on the test database) and switches to it with
+`SET SESSION AUTHORIZATION` before running `CREATE EXTENSION`/`ALTER
+EXTENSION UPDATE`. No separate login, password, or CI job needed: the
+switch only affects `load.sql`'s own already-authenticated session, and
+every mode this suite runs in (superuser CI, a developer's local
+superuser) ends up exercising the exact same non-superuser install path.
 
 ### Dependency Guard
 
