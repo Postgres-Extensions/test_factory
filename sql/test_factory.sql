@@ -70,7 +70,8 @@ BEGIN
 					RAISE EXCEPTION
 						'role "%" lacks SET-enabled membership in "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
 						, current_user
-						USING HINT = format(
+						USING ERRCODE = 'insufficient_privilege'
+						, HINT = format(
 							'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
 							, format('GRANT test_factory__owner TO %I WITH SET TRUE;', current_user)
 						);
@@ -84,7 +85,8 @@ BEGIN
 				RAISE EXCEPTION
 					'role "%" is not a member of "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
 					, current_user
-					USING HINT = format(
+					USING ERRCODE = 'insufficient_privilege'
+					, HINT = format(
 						'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
 						, format('GRANT test_factory__owner TO %I;', current_user)
 					);
