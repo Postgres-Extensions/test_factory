@@ -1,7 +1,10 @@
 \set ECHO none
 \i test/helpers/setup.sql
 
--- test/install/load.sql already installed the extension, in every mode.
+/*
+ * test/install/load.sql already installed the extension, in every mode
+ * (including the regression test for issue #14 -- see its own comment).
+ */
 
 -- NOTE: This runs some tests itself
 \i test/helpers/create.sql

@@ -7,4 +7,7 @@
  */
 \set test_role test_role
 
+-- test/install/load.sql only -- see its own comment.
+\set installer_role test_factory_installer
+
 -- vi: expandtab ts=2 sw=2

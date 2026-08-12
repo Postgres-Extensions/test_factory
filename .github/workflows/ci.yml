@@ -5,22 +5,41 @@
 #
 #   test             -- FRESH install: CREATE EXTENSION at the current
 #                        version, on every supported PostgreSQL major. The
-#                        baseline a brand-new user gets.
+#                        install itself runs as a disposable non-superuser
+#                        role (test/install/load.sql's test_factory_installer
+#                        -- see its own comment), not as whatever superuser
+#                        CI happens to connect as: pg_has_role(current_user,
+#                        ...) is unconditionally true for a superuser, so
+#                        only a real non-superuser installer actually
+#                        exercises https://github.com/Postgres-Extensions/test_factory/issues/14's
+#                        fix. A separate superuser-install leg would add
+#                        nothing real -- superuser bypasses every check that
+#                        role is subject to, so if the non-superuser installer
+#                        can do it, a superuser certainly can too.
 #   pg-upgrade-test   -- BINARY pg_upgrade: install the current version on an
 #                        OLD major, binary-upgrade the cluster to a NEWER
 #                        major, then run the suite against the migrated
 #                        objects in "existing" mode (test/install/load.sql).
 #                        Proves objects created on an old server still work
 #                        read back on a new one -- fresh-install testing
-#                        never exercises this at all.
+#                        never exercises this at all. Runs as the ambient
+#                        superuser throughout (binary pg_upgrade itself needs
+#                        OS/cluster-level superuser access anyway), not the
+#                        non-superuser installer -- test/install/load.sql only
+#                        switches to it in the fresh/update branch.
 #
 # test_factory has shipped only one version (0.5.0), so there is no
 # in-place `ALTER EXTENSION UPDATE` path to test yet (no extension-update-test
 # job) and the pg_upgrade job needs no bridge step (it always installs the
 # CURRENT version on the old cluster -- there's no older, pg_upgrade-unsafe
-# version in the wild to carry forward). Both jobs derive their PostgreSQL
-# major list from the single source of truth computed in the `changes` job
-# below, so adding/dropping a supported major is a one-line edit there.
+# version in the wild to carry forward). The `test` job derives its
+# PostgreSQL major list from the single source of truth computed in the
+# `changes` job below, so adding/dropping a supported major is a one-line
+# edit there for that job. `pg-upgrade-test`'s matrix is NOT derived from
+# that same source -- its old_pg/new_pg pairs are hardcoded literals below,
+# deliberately chosen to straddle the PostgreSQL 16 boundary without ever
+# crossing it (see that job's own comment for why), so bumping NEWEST/FLOOR
+# does not automatically update it.
 name: CI
 on:
   # Post-merge CI only; pull_request already covers every PR commit. Without
@@ -190,13 +209,12 @@ jobs:
   # older, pg_upgrade-unsafe install to carry forward -- every leg installs
   # the current version directly on the old cluster.
   #
-  # Two legs, not an every-major stepwise climb (deliberately out of scope --
-  # see the PR description): the oldest-to-newest jump (widest catalog
-  # distance) and the newest-boundary jump (most likely to hit a *new*
-  # PostgreSQL major's catalog change first). test_factory has no views or
-  # functions touching catalog internals (no SELECT * over a system catalog),
-  # so the per-major-boundary risk a full stepwise climb protects against is
-  # low here.
+  # Two legs, deliberately chosen to each stay entirely on one side of the
+  # PostgreSQL 16 boundary (10->15 and 16->18), never crossing PG16 itself:
+  # binary pg_upgrade doesn't re-run the install script, so
+  # https://github.com/Postgres-Extensions/test_factory/issues/14's
+  # `GRANT ... WITH SET TRUE` fix can't reach a role grant that predates PG16
+  # (see README's "Known limitation" section).
   pg-upgrade-test:
     # Also needs `test`, not just `changes`: without this, a trivially-broken
     # PR (fails the cheap fresh-install matrix) still burns the full,
@@ -207,8 +225,8 @@ jobs:
       matrix:
         include:
           - old_pg: "10"
-            new_pg: "18"
-          - old_pg: "17"
+            new_pg: "15"
+          - old_pg: "16"
             new_pg: "18"
     name: 🔄 Binary pg_upgrade ${{ matrix.old_pg }} → ${{ matrix.new_pg }}
     runs-on: ubuntu-latest

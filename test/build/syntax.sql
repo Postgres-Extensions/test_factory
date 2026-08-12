@@ -34,6 +34,17 @@
 
 BEGIN;
 
+/*
+ * CREATE EXTENSION already forces client_min_messages to at least WARNING
+ * for the duration of an install script, restoring the caller's setting
+ * once it finishes -- so a real CREATE EXTENSION never shows the %TYPE
+ * NOTICE below on its own. Running the script bare via \i here gets none
+ * of that, so this harness sets it itself, immediately before the \i, to
+ * match what a real install actually looks like. ERROR is unaffected, so
+ * the two expected pg_extension_config_dump() errors below still show.
+ */
+SET LOCAL client_min_messages = WARNING;
+
 -- test_factory first: test_factory_pgtap's file needs its "tf" schema/role.
 \i sql/test_factory.sql
 \i sql/test_factory_pgtap.sql
