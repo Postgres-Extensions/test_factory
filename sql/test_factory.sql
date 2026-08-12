@@ -69,7 +69,7 @@ BEGIN
 					 */
 					RAISE EXCEPTION
 						'role "%" lacks SET-enabled membership in "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
-						, current_user
+						, current_user -- unquoted; the "" above is the only quoting
 						USING ERRCODE = 'insufficient_privilege'
 						, HINT = format(
 							'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
@@ -84,7 +84,7 @@ BEGIN
 			WHEN insufficient_privilege THEN
 				RAISE EXCEPTION
 					'role "%" is not a member of "test_factory__owner", and lacks ADMIN OPTION to grant it to itself'
-					, current_user
+					, current_user -- unquoted; the "" above is the only quoting
 					USING ERRCODE = 'insufficient_privilege'
 					, HINT = format(
 						'Ask a superuser, or a role with ADMIN OPTION on "test_factory__owner", to run: %s'
