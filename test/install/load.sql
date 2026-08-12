@@ -199,8 +199,10 @@ SELECT :'load_mode' = 'existing' AS is_existing
   CREATE SCHEMA IF NOT EXISTS tap;
   CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
 
-  -- Captured before either branch below runs CREATE EXTENSION, so the
-  -- role-restore proof after \endif covers whichever one actually ran.
+  /*
+   * Captured before either branch below runs CREATE EXTENSION, so the
+   * role-restore proof after \endif covers whichever one actually ran.
+   */
   SELECT current_user AS role_before_install
   \gset
 
