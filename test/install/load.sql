@@ -265,8 +265,10 @@ SELECT :'load_mode' = 'existing' AS is_existing
     CREATE SCHEMA IF NOT EXISTS tap;
     CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
 
-    -- Captured before CREATE EXTENSION, so the role-restore proof below
-    -- covers it too.
+    /*
+     * Captured before CREATE EXTENSION, so the role-restore proof below
+     * covers it too.
+     */
     SELECT current_user AS role_before_install
     \gset
 
@@ -288,8 +290,10 @@ SELECT :'load_mode' = 'existing' AS is_existing
   -- update-vs-fresh install
   \else
 
-    -- Everything from here on -- the actual install this mode exists to
-    -- test -- runs as the installer instead.
+    /*
+     * Everything from here on -- the actual install this mode exists to
+     * test -- runs as the installer instead.
+     */
     SET SESSION AUTHORIZATION :installer_role;
 
     /*
@@ -312,8 +316,10 @@ SELECT :'load_mode' = 'existing' AS is_existing
     CREATE SCHEMA IF NOT EXISTS tap;
     CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA tap;
 
-    -- Captured before CREATE EXTENSION, so the role-restore proof below
-    -- covers it too.
+    /*
+     * Captured before CREATE EXTENSION, so the role-restore proof below
+     * covers it too.
+     */
     SELECT current_user AS role_before_install
     \gset
 

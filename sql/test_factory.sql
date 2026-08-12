@@ -327,8 +327,10 @@ BEGIN
 END
 $body$;
 
---select (tf.get('moo','moo')::moo).*;
--- Restore the caller's role saved at the top of this script.
+/*
+ * select (tf.get('moo','moo')::moo).*;
+ * Restore the caller's role saved at the top of this script.
+ */
 DO $body$
 BEGIN
   EXECUTE 'SET ROLE ' || pg_catalog.quote_ident(pg_catalog.current_setting('test_factory.original_role'));
