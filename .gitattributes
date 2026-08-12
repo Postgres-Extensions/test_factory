@@ -1,0 +1,13 @@
+# See ../ai/RELEASE.md's multi-extension distribution section: an
+# extension with no real changes this release cycle keeps its
+# <last-released>--stable.sql update script un-renamed (a genuine no-op),
+# rather than promoting it to a real versioned update script. That file
+# must never ship in a release archive -- nothing in a tagged release
+# has default_version = 'stable' for any extension, so a file only
+# reachable via that pseudo-version would be permanently unreachable,
+# confusing cruft in the archive. Safe as a blanket glob here (unlike
+# .gitignore's exact-filename version of this same exclusion): by the
+# time `make dist` archives a tag, any extension that DID change already
+# had its stable-named file renamed away, so only genuine no-ops can
+# still match this pattern.
+sql/*--stable.sql export-ignore
