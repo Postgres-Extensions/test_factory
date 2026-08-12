@@ -1,14 +1,15 @@
 /*
- * Same issue as a fresh install (see sql/test_factory.sql's own comment):
- * CREATE ROLE never granted the ORIGINAL installer any relationship to
- * test_factory__owner either, on any PostgreSQL version. An existing
- * 0.5.0 install already has test_factory__owner and doesn't need it
- * recreated -- it only needs this same GRANT, so that whoever runs this
- * update (and anyone else who later needs to SET ROLE
- * test_factory__owner) has it too. No object in this extension changed
- * between 0.5.0 and here, so nothing needs to run AS test_factory__owner
- * -- unlike the fresh-install script, there's no role to switch to or
- * restore.
+ * https://github.com/Postgres-Extensions/test_factory/issues/14: whoever
+ * originally installed 0.5.0 never automatically got SET-enabled (PG16+)
+ * or even plain (pre-16) membership in test_factory__owner -- that's the
+ * bug, and it applies just as much to an already-existing 0.5.0 install
+ * as to a fresh one (see sql/test_factory.sql's own comment for the fresh
+ * case). This grants it retroactively, so whoever runs this update -- and
+ * anyone else who later needs to SET ROLE test_factory__owner -- has it.
+ *
+ * No object in this extension changed between 0.5.0 and here, so unlike
+ * the fresh-install script, there's nothing to create or alter AS
+ * test_factory__owner, and so no role to switch to or restore.
  */
 DO $body$
 BEGIN
