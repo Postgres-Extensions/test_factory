@@ -10,10 +10,12 @@
  * test_factory's install script makes to PUBLIC.
  */
 SET ROLE = DEFAULT;
-CREATE ROLE test_factory_bare_user;
--- USAGE on tap is a pgtap test-harness necessity (to call lives_ok() etc.
--- below), not one of the grants under test here.
-GRANT USAGE ON SCHEMA tap TO test_factory_bare_user;
+CREATE ROLE :bare_role;
+/*
+ * USAGE on tap is a pgtap test-harness necessity (to call lives_ok() etc.
+ * below), not one of the grants under test here.
+ */
+GRANT USAGE ON SCHEMA tap TO :bare_role;
 /*
  * SET SESSION AUTHORIZATION, not SET ROLE: it changes session_user too, which
  * is what a further SET ROLE's permission check actually looks at. A plain
@@ -21,7 +23,7 @@ GRANT USAGE ON SCHEMA tap TO test_factory_bare_user;
  * (including test_factory__owner below) regardless of grants, since
  * pg_regress always connects as a superuser.
  */
-SET SESSION AUTHORIZATION test_factory_bare_user;
+SET SESSION AUTHORIZATION :bare_role;
 
 CREATE TEMP TABLE widget(
   widget_id   serial  PRIMARY KEY

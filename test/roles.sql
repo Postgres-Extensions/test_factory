@@ -10,4 +10,12 @@
 -- test/install/load.sql only -- see its own comment.
 \set installer_role test_factory_installer
 
+/*
+ * test/sql/security.sql only -- see its own comment. Deliberately not
+ * test_role: that role is set up by test/helpers/create.sql for other
+ * files, and this one exists specifically to have no setup beyond
+ * Postgres' own role defaults.
+ */
+\set bare_role test_factory_bare_user
+
 -- vi: expandtab ts=2 sw=2
