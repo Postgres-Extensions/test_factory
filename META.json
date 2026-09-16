@@ -33,13 +33,13 @@
     "tags": [ "testing", "unit test", "tests", "test data", "test factory" ],
     
     "resources": {
-        "homepage": "http://github.com/BlueTreble/test_factory/",
+        "homepage": "https://github.com/Postgres-Extensions/test_factory/",
         "bugtracker": {
-            "web": "http://github.com/BlueTreble/test_factory/issues"
+            "web": "https://github.com/Postgres-Extensions/test_factory/issues"
         },
         "repository": {
-            "url": "git://github.com/BlueTreble/test_factory.git",
-            "web": "http://github.com/BlueTreble/test_factory/",
+            "url": "https://github.com/Postgres-Extensions/test_factory.git",
+            "web": "https://github.com/Postgres-Extensions/test_factory/",
             "type": "git"
         }
     },
