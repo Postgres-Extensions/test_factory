@@ -9,6 +9,11 @@ GRANT USAGE ON SCHEMA tap TO :test_role;
  * DO NOT GRANT test_role TO test_factory__owner; the whole point test_role is
  * to check for security problems.
  */
+SELECT isnt_member_of(
+  'test_factory__owner'
+  , :'test_role'
+  , 'test_role is not a member of test_factory__owner'
+);
 
 CREATE SCHEMA test AUTHORIZATION :test_role;
 /*
