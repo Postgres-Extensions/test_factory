@@ -1,14 +1,15 @@
 \set ECHO none
 ok 1 - test_factory_pgtap depends on test_factory (control file requires is real and enforced)
-ok 2 - Register test customers
-ok 3 - Create function customer__add
-ok 4 - Register test invoices
-ok 5 - Ensure original_role temp table was dropped
-ok 6 - Security definer function _tf.get has search_path=pg_catalog
-ok 7 - Security definer function _tf.schema__getsert has search_path=pg_catalog
-ok 8 - Security definer function _tf.table_create has search_path=pg_catalog
-ok 9 - Security definer function _tf.test_factory__get has search_path=pg_catalog
-ok 10 - Security definer function _tf.test_factory__set has search_path=pg_catalog
-ok 11 - Get test data set "base" for table invoice
+ok 2 - test_role is not a member of test_factory__owner
+ok 3 - Register test customers
+ok 4 - Create function customer__add
+ok 5 - Register test invoices
+ok 6 - Ensure original_role temp table was dropped
+ok 7 - Security definer function _tf.get has search_path=pg_catalog
+ok 8 - Security definer function _tf.schema__getsert has search_path=pg_catalog
+ok 9 - Security definer function _tf.table_create has search_path=pg_catalog
+ok 10 - Security definer function _tf.test_factory__get has search_path=pg_catalog
+ok 11 - Security definer function _tf.test_factory__set has search_path=pg_catalog
 ok 12 - Get test data set "base" for table invoice
-ok 13 - Ensure we get sane error for a non-existent table
+ok 13 - Get test data set "base" for table invoice
+ok 14 - Ensure we get sane error for a non-existent table
