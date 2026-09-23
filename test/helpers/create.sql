@@ -9,9 +9,22 @@ GRANT USAGE ON SCHEMA tap TO :test_role;
  * DO NOT GRANT test_role TO test_factory__owner; the whole point test_role is
  * to check for security problems.
  */
+SELECT isnt_member_of(
+  'test_factory__owner'
+  , :'test_role'
+  , 'test_role is not a member of test_factory__owner'
+);
 
 CREATE SCHEMA test AUTHORIZATION :test_role;
-SET ROLE = :test_role;
+/*
+ * SET SESSION AUTHORIZATION (not SET ROLE): it changes session_user too, not
+ * just current_user. Permission checks for a *further* SET ROLE (like the one
+ * test_factory's install does, and like issue #14's bug) are based on
+ * session_user's superuser status, not current_user's -- so a plain SET ROLE
+ * here would leave that one class of check silently bypassed for the rest of
+ * this file, since pg_regress always connects as a superuser.
+ */
+SET SESSION AUTHORIZATION :test_role;
 SET search_path = test, tap;
 
 CREATE TABLE customer(
