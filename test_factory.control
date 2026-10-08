@@ -1,5 +1,5 @@
 comment = 'A framework for managing test data'
-default_version = '0.5.0'
+default_version = 'stable'
 relocatable = false
 # Not a security boundary weakening: test_factory__owner is a locked-down,
 # dedicated owner role, and every privileged function is SECURITY DEFINER
